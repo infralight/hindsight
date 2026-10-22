@@ -13,7 +13,10 @@ import {
 import { version } from "../../package.json";
 
 export const DATAPLANE_URL = process.env.HINDSIGHT_CP_DATAPLANE_API_URL || "http://localhost:8888";
-const DATAPLANE_API_KEY = process.env.HINDSIGHT_CP_DATAPLANE_API_KEY || "";
+// fork(rbac): in rbac mode the shared key is never sent; each call carries the user's own
+// credential (see lib/auth/dataplane-auth.ts).
+const DATAPLANE_API_KEY =
+  process.env.HINDSIGHT_CP_AUTH_MODE === "rbac" ? "" : process.env.HINDSIGHT_CP_DATAPLANE_API_KEY || "";
 
 /** Sent on every dataplane request so the API can tell control-plane traffic apart. */
 export const USER_AGENT = `hindsight-control-plane/${version}`;
