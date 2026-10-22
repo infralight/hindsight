@@ -43,9 +43,21 @@ export function sessionSecret(): string | null {
   return secret.length >= 32 ? secret : null;
 }
 
-export async function sealSession(session: UserSession, secret: string): Promise<string> {
+export function sealSession(session: UserSession, secret: string): Promise<string> {
+  return sealValue(session, secret);
+}
+
+export async function openSession(value: string | undefined, secret: string): Promise<UserSession | null> {
+  const session = await openValue<UserSession>(value, secret);
+  if (!session || session.v !== SESSION_VERSION || typeof session.cred !== "string") return null;
+  if (session.exp <= Math.floor(Date.now() / 1000)) return null;
+  return session;
+}
+
+/** AES-GCM-seal any JSON value under the session secret. */
+export async function sealValue(value: unknown, secret: string): Promise<string> {
   const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
-  const plaintext = new TextEncoder().encode(JSON.stringify(session));
+  const plaintext = new TextEncoder().encode(JSON.stringify(value));
   const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await aesKey(secret), plaintext);
   const sealed = new Uint8Array(IV_BYTES + ciphertext.byteLength);
   sealed.set(iv);
@@ -53,7 +65,8 @@ export async function sealSession(session: UserSession, secret: string): Promise
   return base64UrlEncode(sealed);
 }
 
-export async function openSession(value: string | undefined, secret: string): Promise<UserSession | null> {
+/** The value sealed by `sealValue`, or null for anything tampered, foreign or malformed. */
+export async function openValue<T>(value: string | undefined, secret: string): Promise<T | null> {
   if (!value) return null;
   try {
     const sealed = base64UrlDecode(value);
@@ -63,10 +76,7 @@ export async function openSession(value: string | undefined, secret: string): Pr
       await aesKey(secret),
       sealed.slice(IV_BYTES)
     );
-    const session = JSON.parse(new TextDecoder().decode(plaintext)) as UserSession;
-    if (session.v !== SESSION_VERSION || typeof session.cred !== "string") return null;
-    if (session.exp <= Math.floor(Date.now() / 1000)) return null;
-    return session;
+    return JSON.parse(new TextDecoder().decode(plaintext)) as T;
   } catch {
     return null;
   }

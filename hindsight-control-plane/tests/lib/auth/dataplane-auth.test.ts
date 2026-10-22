@@ -30,6 +30,7 @@ describe("installDataplaneAuth", () => {
   });
   afterEach(() => {
     globalThis.fetch = original;
+    delete (globalThis as Record<symbol, unknown>)[Symbol.for("hindsight.cp.unwrappedFetch")];
     vi.restoreAllMocks();
   });
 

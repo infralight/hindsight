@@ -21,7 +21,9 @@ export async function GET(request: Request) {
 
     const data = response.data as Record<string, unknown>;
     const features = (data.features ?? {}) as Record<string, boolean>;
-    features.access_key_auth = !!process.env.HINDSIGHT_CP_ACCESS_KEY;
+    // fork(rbac): per-user sessions sign out through the same button.
+    features.access_key_auth =
+      !!process.env.HINDSIGHT_CP_ACCESS_KEY || process.env.HINDSIGHT_CP_AUTH_MODE === "rbac";
     data.features = features;
 
     return NextResponse.json(data, { status: 200 });
