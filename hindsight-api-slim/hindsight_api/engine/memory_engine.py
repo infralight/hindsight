@@ -5047,7 +5047,13 @@ class MemoryEngine(MemoryEngineInterface):
         consolidation_result: dict | None = None
         bank_id = task_dict.get("bank_id")
         async with audit_context(
-            self._audit_logger, task_type or "unknown", "system", bank_id, request=task_dict
+            self._audit_logger,
+            task_type or "unknown",
+            "system",
+            bank_id,
+            request=task_dict,
+            # fork(rbac): attribute background work to the principal that queued it.
+            metadata={"actor": task_dict.get("_tenant_id") or "system"},
         ) as audit_entry:
             try:
                 # Stage breadcrumb for the worker poller's WORKER_TASK log line.
@@ -8184,6 +8190,11 @@ class MemoryEngine(MemoryEngineInterface):
         scope = scope or TransferScope()
         await self._authenticate_tenant(request_context)
         await self._refuse_bank_wide_if_scoped(bank_id, request_context, "export the bank")
+        if scope.history:
+            # fork(rbac): history carries audit_log, so it needs what reading the audit log needs.
+            from hindsight_api.extensions import BankReadOperation
+
+            await self._authorize_bank_read(bank_id, BankReadOperation.LIST_AUDIT_LOGS, request_context)
         await self._get_backend()
 
         task_payload: dict[str, Any] = {
@@ -8301,6 +8312,11 @@ class MemoryEngine(MemoryEngineInterface):
 
         await self._authenticate_tenant(request_context)
         await self._refuse_bank_wide_if_scoped(bank_id, request_context, "clone the bank")
+        if scope.history:
+            # fork(rbac): history carries audit_log, so it needs what reading the audit log needs.
+            from hindsight_api.extensions import BankReadOperation
+
+            await self._authorize_bank_read(bank_id, BankReadOperation.LIST_AUDIT_LOGS, request_context)
         backend = await self._get_backend()
         if await bank_utils.get_bank_profile_if_exists(backend, target_bank_id) is not None:
             raise ValueError(
@@ -14500,6 +14516,10 @@ class MemoryEngine(MemoryEngineInterface):
             return None
         # Every caller's actions, payloads included, unscoped: refuse tag-scoped callers.
         await self._refuse_bank_wide_if_scoped(bank_id, request_context, "read the bank's audit log")
+        # fork(rbac): audit entries carry every caller's payloads; gate them apart from profile reads.
+        from hindsight_api.extensions import BankReadOperation
+
+        await self._authorize_bank_read(bank_id, BankReadOperation.LIST_AUDIT_LOGS, request_context)
 
         where_clauses = ["bank_id = $1"]
         params: list[Any] = [bank_id]
@@ -14564,6 +14584,10 @@ class MemoryEngine(MemoryEngineInterface):
         if await self.get_bank_profile(bank_id, request_context=request_context) is None:
             return None
         await self._refuse_bank_wide_if_scoped(bank_id, request_context, "read the bank's audit log")
+        # fork(rbac): audit entries carry every caller's payloads; gate them apart from profile reads.
+        from hindsight_api.extensions import BankReadOperation
+
+        await self._authorize_bank_read(bank_id, BankReadOperation.LIST_AUDIT_LOGS, request_context)
 
         backend = await self._get_backend()
         async with acquire_with_retry(backend) as conn:
@@ -14603,6 +14627,10 @@ class MemoryEngine(MemoryEngineInterface):
             return None
         # Every caller's actions, payloads included, unscoped: refuse tag-scoped callers.
         await self._refuse_bank_wide_if_scoped(bank_id, request_context, "read the bank's audit log")
+        # fork(rbac): audit entries carry every caller's payloads; gate them apart from profile reads.
+        from hindsight_api.extensions import BankReadOperation
+
+        await self._authorize_bank_read(bank_id, BankReadOperation.LIST_AUDIT_LOGS, request_context)
 
         now = datetime.now(timezone.utc)
         trunc = "day"

@@ -99,6 +99,16 @@ class AuditEntry:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+def audit_actor(context: RequestContext | None) -> str:
+    """Who an audit entry is attributed to (fork(rbac)): the principal on the request,
+    ``system`` for internal work, ``anonymous`` for an unauthenticated caller."""
+    if context is None:
+        return "system"
+    if context.tenant_id:
+        return context.tenant_id
+    return "system" if context.internal else "anonymous"
+
+
 def _json_default(obj: Any) -> str:
     """JSON serializer for objects not serializable by default."""
     if isinstance(obj, datetime):

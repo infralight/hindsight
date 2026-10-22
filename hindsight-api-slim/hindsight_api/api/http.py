@@ -38,6 +38,7 @@ from hindsight_api.engine.audit import (
     AuditLogger,
     AuditLogListResponse,
     AuditLogStatsResponse,
+    audit_actor,
 )
 from hindsight_api.engine.document_history import DocumentHistoryResponse
 from hindsight_api.engine.llm_trace import LLMCallType, LLMRequestListResponse, LLMRequestStatsResponse
@@ -5220,6 +5221,8 @@ def _make_audited_http(audit_logger_getter: Callable[[], AuditLogger | None]):
                     return result
                 finally:
                     entry.ended_at = _dt.now(_tz.utc)
+                    # fork(rbac): record who did it; auth ran inside func and set tenant_id.
+                    entry.metadata["actor"] = audit_actor(kwargs.get("request_context"))
                     al.log_fire_and_forget(entry)
 
             # Preserve FastAPI's dependency injection signature
