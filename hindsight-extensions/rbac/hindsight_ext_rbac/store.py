@@ -382,6 +382,12 @@ class RbacStore:
         owner = str(row["owner_id"]) if row["owner_id"] is not None else None
         return BankAcl(bank_id=row["bank_id"], visibility=row["visibility"], owner_id=owner)
 
+    async def bank_exists(self, bank_id: str) -> bool:
+        pool = await self._pool()
+        return bool(
+            await pool.fetchval(f"SELECT EXISTS (SELECT 1 FROM {fq_table('banks')} WHERE bank_id = $1)", bank_id)
+        )
+
     async def grant_roles(self, bank_id: str, principal_id: str) -> list[Role]:
         pid = _uuid(principal_id)
         if pid is None:

@@ -52,6 +52,28 @@ def install_tenant(rbac_memory, pg0_db_url):
     return install
 
 
+@pytest.fixture
+def install_validator(rbac_memory, pg0_db_url):
+    """Make the engine enforce RBAC with a fresh RbacOperationValidator."""
+    from hindsight_api.extensions.context import DefaultExtensionContext
+    from hindsight_ext_rbac import RbacOperationValidator
+
+    def install() -> RbacOperationValidator:
+        validator = RbacOperationValidator({})
+        validator.set_context(DefaultExtensionContext(database_url=pg0_db_url, memory_engine=rbac_memory))
+        rbac_memory._operation_validator = validator
+        return validator
+
+    return install
+
+
+@pytest.fixture
+def rbac_on(install_tenant, install_validator):
+    """Tenant (required mode) + validator installed; returns the validator."""
+    install_tenant()
+    return install_validator()
+
+
 @pytest_asyncio.fixture
 async def api(rbac_memory):
     """HTTP client over the engine (tenant/validator are whatever the test installed)."""
