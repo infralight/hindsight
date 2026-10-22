@@ -481,13 +481,16 @@ export class ControlPlaneClient {
         // Redirect to login only when the UI session itself was refused. A 401 the
         // dataplane returned is shown as an error: a new UI key can't fix it.
         const currentPath = stripBasePath(`${window.location.pathname}${window.location.search}`);
-        if (
-          response.status === 401 &&
-          response.headers.get(SESSION_REQUIRED_HEADER) &&
-          !currentPath.startsWith("/login")
-        ) {
-          window.location.href = withBasePath(`/login?returnTo=${encodeURIComponent(currentPath)}`);
-          throw new Error("Unauthorized");
+        if (response.status === 401 && response.headers.get(SESSION_REQUIRED_HEADER)) {
+          // fork(rbac): on the login page itself the refusal is expected (shared providers
+          // load data on every page) — no redirect and no error toast.
+          if (!currentPath.startsWith("/login")) {
+            window.location.href = withBasePath(
+              `/login?returnTo=${encodeURIComponent(currentPath)}`
+            );
+          }
+          // A status keeps the catch below from reporting it as a network failure.
+          throw Object.assign(new Error("Unauthorized"), { status: 401 });
         }
 
         // Try to parse error response

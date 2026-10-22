@@ -2036,14 +2036,25 @@
     "signingIn": "Signing in...",
     "invalidKey": "Invalid access key",
     "connectFailed": "Failed to connect to server",
-    "ssoDescription": "Sign in to continue",
+    "ssoDescription": "Use your company account to continue.",
     "signInWithGoogle": "Sign in with Google",
     "orUseToken": "or use an API token",
     "tokenPlaceholder": "hsp_…",
     "signInWithToken": "Sign in with token",
     "invalidToken": "Invalid, expired or revoked token",
     "ssoFailed": "Single sign-on failed. Please try again.",
-    "configError": "Sign-in is not configured on this server."
+    "configError": "Sign-in is not configured on this server.",
+    "welcomeTitle": "Sign in to Hindsight",
+    "tokenLabel": "API token",
+    "tokenHelp": "Personal and service-account tokens start with hsp_. You can paste one here.",
+    "showSecret": "Show",
+    "hideSecret": "Hide",
+    "brandTitle": "Long-term memory for your agents, shared safely.",
+    "brandPointPrivacy": "Keep a memory bank private, or open it to everyone.",
+    "brandPointSharing": "Share banks with teammates and teams, as reader, writer or owner.",
+    "brandPointAudit": "Every request, from people and agents, is tied to who made it.",
+    "brandFooter": "Hindsight · agent memory",
+    "tokenDescription": "Sign in with your Hindsight API token."
   },
   "api": {
     "errors": {

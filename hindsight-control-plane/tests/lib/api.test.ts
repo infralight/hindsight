@@ -72,6 +72,21 @@ describe("ControlPlaneClient error handling", () => {
     expect(window.location.href).toBe("/login?returnTo=%2Fen%2Fdashboard");
   });
 
+  it("stays quiet about a refused session on the login page itself", async () => {
+    window.location.pathname = "/login";
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "x-hindsight-session-required": "1" },
+      })
+    );
+
+    await expect(client.getBankConfig("bank-a")).rejects.toThrow("Unauthorized");
+    expect(window.location.href).toBe("");
+    expect(toast.warning).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
   it("keeps a valid session on the page when the dataplane answers 401", async () => {
     fetchSpy.mockResolvedValueOnce(
       new Response(

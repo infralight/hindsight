@@ -4,12 +4,11 @@ import { Suspense, useState, FormEvent, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
-import { LanguageSwitcher } from "@/components/language-switcher";
 import { sanitizeReturnTo, withBasePath } from "@/lib/base-path";
-import Image from "next/image";
-import { RbacLogin } from "@/components/rbac-login";
+import { LoginShell } from "@/components/login/login-shell";
+import { RbacLogin } from "@/components/login/rbac-login";
+import { SecretField } from "@/components/login/secret-field";
+import { Spinner } from "@/components/ui/spinner";
 
 // fork(rbac): which sign-in the server offers (per-user SSO/token, or the shared key).
 interface AuthConfig {
@@ -35,12 +34,6 @@ function LoginForm() {
       .then((res) => (res.ok ? res.json() : { mode: "access_key" }))
       .then(setAuthConfig)
       .catch(() => setAuthConfig({ mode: "access_key" }));
-  }, []);
-
-  useEffect(() => {
-    // Focus the input on mount
-    const input = document.getElementById("access-key");
-    input?.focus();
   }, []);
 
   async function handleSubmit(e: FormEvent) {
@@ -70,56 +63,56 @@ function LoginForm() {
     }
   }
 
+  const isRbac = authConfig?.mode === "rbac";
+
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="absolute top-4 right-4">
-        <LanguageSwitcher />
-      </div>
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <Image
-            src={withBasePath("/logo.png")}
-            alt="Hindsight"
-            width={160}
-            height={160}
-            className="mx-auto"
-            unoptimized
+    <LoginShell
+      title={isRbac ? t("welcomeTitle") : t("title")}
+      subtitle={
+        !isRbac
+          ? t("description")
+          : authConfig?.google
+            ? t("ssoDescription")
+            : t("tokenDescription")
+      }
+    >
+      {authConfig === null ? (
+        // Same footprint as the form, so nothing jumps when the options arrive.
+        <div aria-hidden className="h-[132px] animate-pulse rounded-lg bg-muted" />
+      ) : isRbac ? (
+        <RbacLogin
+          google={!!authConfig.google}
+          tokenLogin={!!authConfig.tokenLogin}
+          returnTo={returnTo}
+          error={searchParams.get("error")}
+        />
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          <SecretField
+            id="access-key"
+            label={t("accessKey")}
+            value={key}
+            onChange={(value) => {
+              setKey(value);
+              if (error) setError("");
+            }}
+            placeholder={t("accessKeyPlaceholder")}
+            error={error}
+            autoFocus
           />
-          <CardDescription>
-            {authConfig?.mode === "rbac" ? t("ssoDescription") : t("description")}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {authConfig === null ? null : authConfig.mode === "rbac" ? (
-            <RbacLogin
-              google={!!authConfig.google}
-              tokenLogin={!!authConfig.tokenLogin}
-              returnTo={returnTo}
-              error={searchParams.get("error")}
-            />
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <Input
-                  id="access-key"
-                  type="password"
-                  placeholder={t("accessKeyPlaceholder")}
-                  value={key}
-                  onChange={(e) => setKey(e.target.value)}
-                  autoComplete="off"
-                />
-              </div>
-
-              {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
-
-              <Button type="submit" className="w-full" disabled={loading || !key}>
-                {loading ? t("signingIn") : t("signIn")}
-              </Button>
-            </form>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+          <Button
+            type="submit"
+            variant="gradient"
+            className="h-11 w-full gap-2"
+            disabled={loading || !key}
+            aria-busy={loading}
+          >
+            {loading && <Spinner size="sm" />}
+            {loading ? t("signingIn") : t("signIn")}
+          </Button>
+        </form>
+      )}
+    </LoginShell>
   );
 }
 
