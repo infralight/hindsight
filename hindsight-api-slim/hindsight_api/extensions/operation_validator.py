@@ -397,6 +397,8 @@ class BankReadOperation(StrEnum):
     GET_MENTAL_MODEL_HISTORY = "get_mental_model_history"
     GET_OBSERVATION_HISTORY = "get_observation_history"
     GET_OPERATION_STATUS = "get_operation_status"
+    # fork(rbac): audit-log reads expose every caller's payloads; RBAC gates them apart from profile reads.
+    LIST_AUDIT_LOGS = "list_audit_logs"
     LIST_BANK_ALIASES = "list_bank_aliases"
     LIST_DIRECTIVES = "list_directives"
     LIST_DOCUMENT_CHUNKS = "list_document_chunks"
