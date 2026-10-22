@@ -12,10 +12,13 @@ export async function register() {
   if (process.env.HINDSIGHT_CP_AUTH_MODE === "rbac") {
     if (process.env.NEXT_RUNTIME !== "nodejs") return;
     const { installDataplaneAuth } = await import("@/lib/auth/dataplane-auth");
-    const { USER_SESSION_COOKIE, openSession, sessionSecret } = await import("@/lib/auth/user-session");
+    const { USER_SESSION_COOKIE, openSession, sessionSecret } =
+      await import("@/lib/auth/user-session");
     const secret = sessionSecret();
     if (!secret) {
-      console.error("[Control Plane] HINDSIGHT_CP_SESSION_SECRET (32+ chars) is required in rbac mode");
+      console.error(
+        "[Control Plane] HINDSIGHT_CP_SESSION_SECRET (32+ chars) is required in rbac mode"
+      );
       return;
     }
     installDataplaneAuth(dataplaneUrl, async () => {

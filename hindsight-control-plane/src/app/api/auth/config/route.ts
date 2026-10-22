@@ -9,5 +9,9 @@ export async function GET() {
   if (!isRbacAuthMode()) {
     return NextResponse.json({ mode: process.env.HINDSIGHT_CP_ACCESS_KEY ? "access_key" : "none" });
   }
-  return NextResponse.json({ mode: "rbac", google: oidcConfig() !== null, tokenLogin: tokenLoginEnabled() });
+  return NextResponse.json({
+    mode: "rbac",
+    google: oidcConfig() !== null,
+    tokenLogin: tokenLoginEnabled(),
+  });
 }

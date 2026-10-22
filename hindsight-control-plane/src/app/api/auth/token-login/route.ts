@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { setUserSession, tokenLoginEnabled, whoIs } from "@/lib/auth/rbac-login";
-import { USER_SESSION_MAX_AGE_SECONDS, isRbacAuthMode, sessionSecret } from "@/lib/auth/user-session";
+import {
+  USER_SESSION_MAX_AGE_SECONDS,
+  isRbacAuthMode,
+  sessionSecret,
+} from "@/lib/auth/user-session";
 
 /** fork(rbac): sign in with a personal API token (checked by the dataplane). */
 export async function POST(request: NextRequest) {
@@ -23,7 +27,8 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: "Could not reach the Hindsight API" }, { status: 502 });
   }
-  if (!user) return NextResponse.json({ error: "Invalid, expired or revoked token" }, { status: 401 });
+  if (!user)
+    return NextResponse.json({ error: "Invalid, expired or revoked token" }, { status: 401 });
 
   const now = Math.floor(Date.now() / 1000);
   const exp = now + USER_SESSION_MAX_AGE_SECONDS;

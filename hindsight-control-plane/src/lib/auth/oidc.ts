@@ -48,7 +48,9 @@ export async function discover(issuer: string): Promise<Discovery> {
 export function jwtExp(token: string): number {
   try {
     const payload = token.split(".")[1] ?? "";
-    const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((payload.length + 3) % 4));
+    const json = atob(
+      payload.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((payload.length + 3) % 4)
+    );
     const exp = Number(JSON.parse(json).exp);
     return Number.isFinite(exp) ? exp : 0;
   } catch {
@@ -71,7 +73,11 @@ async function tokenRequest(cfg: OidcConfig, params: Record<string, string>): Pr
   const res = await fetch(token_endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ client_id: cfg.clientId, client_secret: cfg.clientSecret, ...params }),
+    body: new URLSearchParams({
+      client_id: cfg.clientId,
+      client_secret: cfg.clientSecret,
+      ...params,
+    }),
   });
   if (!res.ok) throw new Error(`OIDC token request failed: ${res.status}`);
   const body = (await res.json()) as { id_token?: string; refresh_token?: string };

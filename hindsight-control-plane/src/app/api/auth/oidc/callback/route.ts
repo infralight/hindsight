@@ -10,7 +10,12 @@ import {
   whoIs,
 } from "@/lib/auth/rbac-login";
 import { sessionCookieOptions } from "@/lib/auth/session";
-import { USER_SESSION_MAX_AGE_SECONDS, isRbacAuthMode, openValue, sessionSecret } from "@/lib/auth/user-session";
+import {
+  USER_SESSION_MAX_AGE_SECONDS,
+  isRbacAuthMode,
+  openValue,
+  sessionSecret,
+} from "@/lib/auth/user-session";
 import { withBasePath } from "@/lib/base-path";
 
 /** fork(rbac): finish SSO — check state, exchange the code, ask the dataplane who this is. */
@@ -18,7 +23,12 @@ export async function GET(request: NextRequest) {
   const origin = publicOrigin(request);
   const failed = () => {
     const response = NextResponse.redirect(new URL(withBasePath("/login?error=sso"), origin));
-    response.cookies.set({ name: OIDC_STATE_COOKIE, value: "", ...sessionCookieOptions(request), maxAge: 0 });
+    response.cookies.set({
+      name: OIDC_STATE_COOKIE,
+      value: "",
+      ...sessionCookieOptions(request),
+      maxAge: 0,
+    });
     return response;
   };
 
@@ -37,7 +47,12 @@ export async function GET(request: NextRequest) {
     const user = await whoIs(tokens.idToken);
     if (!user) return failed();
     const response = NextResponse.redirect(new URL(withBasePath(flow.returnTo), origin));
-    response.cookies.set({ name: OIDC_STATE_COOKIE, value: "", ...sessionCookieOptions(request), maxAge: 0 });
+    response.cookies.set({
+      name: OIDC_STATE_COOKIE,
+      value: "",
+      ...sessionCookieOptions(request),
+      maxAge: 0,
+    });
     return setUserSession(
       response,
       request,

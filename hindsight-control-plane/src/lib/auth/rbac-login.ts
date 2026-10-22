@@ -47,9 +47,11 @@ export async function whoIs(credential: string): Promise<SessionUser | null> {
 export function publicOrigin(request: NextRequest): string {
   const configured = process.env.HINDSIGHT_CP_PUBLIC_URL?.replace(/\/+$/, "");
   if (configured) return configured;
-  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? request.nextUrl.host;
+  const host =
+    request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? request.nextUrl.host;
   const proto =
-    request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() ?? request.nextUrl.protocol.replace(":", "");
+    request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() ??
+    request.nextUrl.protocol.replace(":", "");
   return `${proto}://${host}`;
 }
 

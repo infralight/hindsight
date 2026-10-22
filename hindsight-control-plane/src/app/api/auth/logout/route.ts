@@ -13,7 +13,12 @@ export async function POST(request: NextRequest) {
     maxAge: 0,
   });
   // fork(rbac): end the per-user session too.
-  response.cookies.set({ name: USER_SESSION_COOKIE, value: "", ...sessionCookieOptions(request), maxAge: 0 });
+  response.cookies.set({
+    name: USER_SESSION_COOKIE,
+    value: "",
+    ...sessionCookieOptions(request),
+    maxAge: 0,
+  });
 
   return response;
 }

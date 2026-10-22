@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { discover, oidcConfig, pkcePair, randomState } from "@/lib/auth/oidc";
-import { OIDC_STATE_COOKIE, OIDC_STATE_MAX_AGE_SECONDS, type OidcState, oidcRedirectUri } from "@/lib/auth/rbac-login";
+import {
+  OIDC_STATE_COOKIE,
+  OIDC_STATE_MAX_AGE_SECONDS,
+  type OidcState,
+  oidcRedirectUri,
+} from "@/lib/auth/rbac-login";
 import { sessionCookieOptions } from "@/lib/auth/session";
 import { isRbacAuthMode, sealValue, sessionSecret } from "@/lib/auth/user-session";
 import { sanitizeReturnTo, withBasePath } from "@/lib/base-path";

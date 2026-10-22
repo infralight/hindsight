@@ -73,7 +73,10 @@ async function rbacMiddleware(request: NextRequest, appPathname: string) {
   if (!secret) {
     if (isPublic) return isApi ? NextResponse.next() : intlMiddleware(request);
     return isApi
-      ? NextResponse.json({ error: "HINDSIGHT_CP_SESSION_SECRET is not configured" }, { status: 500 })
+      ? NextResponse.json(
+          { error: "HINDSIGHT_CP_SESSION_SECRET is not configured" },
+          { status: 500 }
+        )
       : NextResponse.redirect(new URL(withBasePath("/login?error=config"), request.url));
   }
   if (isPublic && !isLogin) return isApi ? NextResponse.next() : intlMiddleware(request);
@@ -92,7 +95,10 @@ async function rbacMiddleware(request: NextRequest, appPathname: string) {
     return intlMiddleware(request);
   } else if (!session && isApi) {
     return NextResponse.json(
-      localizeApiErrorPayload(request, { error: "Unauthorized", errorKey: "api.errors.auth.unauthorized" }),
+      localizeApiErrorPayload(request, {
+        error: "Unauthorized",
+        errorKey: "api.errors.auth.unauthorized",
+      }),
       { status: 401, headers: { [SESSION_REQUIRED_HEADER]: "1" } }
     );
   } else if (!session) {
@@ -100,7 +106,9 @@ async function rbacMiddleware(request: NextRequest, appPathname: string) {
     loginUrl.searchParams.set("returnTo", appPathname);
     return NextResponse.redirect(loginUrl);
   } else {
-    response = isApi ? NextResponse.next({ request: { headers: request.headers } }) : intlMiddleware(request);
+    response = isApi
+      ? NextResponse.next({ request: { headers: request.headers } })
+      : intlMiddleware(request);
   }
   if (resealed) {
     response.cookies.set({

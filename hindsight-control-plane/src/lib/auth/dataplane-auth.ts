@@ -21,7 +21,10 @@ export function rawFetch(): typeof fetch {
   return (globalThis as FetchHolder)[UNWRAPPED] ?? globalThis.fetch;
 }
 
-export function installDataplaneAuth(dataplaneUrl: string, getSession: () => Promise<UserSession | null>): void {
+export function installDataplaneAuth(
+  dataplaneUrl: string,
+  getSession: () => Promise<UserSession | null>
+): void {
   const base = new URL(dataplaneUrl);
   const prefix = base.pathname.replace(/\/+$/, "");
   const holder = globalThis as FetchHolder;
@@ -30,7 +33,8 @@ export function installDataplaneAuth(dataplaneUrl: string, getSession: () => Pro
   holder[UNWRAPPED] = inner;
 
   const isDataplane = (url: URL) =>
-    url.origin === base.origin && (prefix === "" || url.pathname === prefix || url.pathname.startsWith(`${prefix}/`));
+    url.origin === base.origin &&
+    (prefix === "" || url.pathname === prefix || url.pathname.startsWith(`${prefix}/`));
 
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = new Request(input, init);

@@ -47,7 +47,10 @@ export function sealSession(session: UserSession, secret: string): Promise<strin
   return sealValue(session, secret);
 }
 
-export async function openSession(value: string | undefined, secret: string): Promise<UserSession | null> {
+export async function openSession(
+  value: string | undefined,
+  secret: string
+): Promise<UserSession | null> {
   const session = await openValue<UserSession>(value, secret);
   if (!session || session.v !== SESSION_VERSION || typeof session.cred !== "string") return null;
   if (session.exp <= Math.floor(Date.now() / 1000)) return null;
@@ -58,7 +61,11 @@ export async function openSession(value: string | undefined, secret: string): Pr
 export async function sealValue(value: unknown, secret: string): Promise<string> {
   const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
   const plaintext = new TextEncoder().encode(JSON.stringify(value));
-  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await aesKey(secret), plaintext);
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    await aesKey(secret),
+    plaintext
+  );
   const sealed = new Uint8Array(IV_BYTES + ciphertext.byteLength);
   sealed.set(iv);
   sealed.set(new Uint8Array(ciphertext), IV_BYTES);
