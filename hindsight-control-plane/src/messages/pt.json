@@ -61,7 +61,9 @@
       "viaAlias": "via {aliases}"
     },
     "viewOnGitHub": "Ver no GitHub",
-    "more": "Mais"
+    "more": "Mais",
+    "signedInAs": "Signed in as {name}",
+    "logout": "Log out"
   },
   "bank": {
     "bankConfiguration": "Configuração do banco",
@@ -2033,7 +2035,15 @@
     "signIn": "Entrar",
     "signingIn": "Entrando...",
     "invalidKey": "Chave de acesso inválida",
-    "connectFailed": "Falha ao conectar ao servidor"
+    "connectFailed": "Falha ao conectar ao servidor",
+    "ssoDescription": "Sign in to continue",
+    "signInWithGoogle": "Sign in with Google",
+    "orUseToken": "or use an API token",
+    "tokenPlaceholder": "hsp_…",
+    "signInWithToken": "Sign in with token",
+    "invalidToken": "Invalid, expired or revoked token",
+    "ssoFailed": "Single sign-on failed. Please try again.",
+    "configError": "Sign-in is not configured on this server."
   },
   "api": {
     "errors": {

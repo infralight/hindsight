@@ -9,6 +9,14 @@ import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { sanitizeReturnTo, withBasePath } from "@/lib/base-path";
 import Image from "next/image";
+import { RbacLogin } from "@/components/rbac-login";
+
+// fork(rbac): which sign-in the server offers (per-user SSO/token, or the shared key).
+interface AuthConfig {
+  mode: "rbac" | "access_key" | "none";
+  google?: boolean;
+  tokenLogin?: boolean;
+}
 
 function LoginForm() {
   const t = useTranslations("login");
@@ -20,6 +28,14 @@ function LoginForm() {
 
   // Validate returnTo to prevent open-redirect via crafted login links.
   const returnTo = sanitizeReturnTo(searchParams.get("returnTo"));
+  const [authConfig, setAuthConfig] = useState<AuthConfig | null>(null);
+
+  useEffect(() => {
+    fetch(withBasePath("/api/auth/config"))
+      .then((res) => (res.ok ? res.json() : { mode: "access_key" }))
+      .then(setAuthConfig)
+      .catch(() => setAuthConfig({ mode: "access_key" }));
+  }, []);
 
   useEffect(() => {
     // Focus the input on mount
@@ -69,27 +85,38 @@ function LoginForm() {
             className="mx-auto"
             unoptimized
           />
-          <CardDescription>{t("description")}</CardDescription>
+          <CardDescription>
+            {authConfig?.mode === "rbac" ? t("ssoDescription") : t("description")}
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <Input
-                id="access-key"
-                type="password"
-                placeholder={t("accessKeyPlaceholder")}
-                value={key}
-                onChange={(e) => setKey(e.target.value)}
-                autoComplete="off"
-              />
-            </div>
+          {authConfig === null ? null : authConfig.mode === "rbac" ? (
+            <RbacLogin
+              google={!!authConfig.google}
+              tokenLogin={!!authConfig.tokenLogin}
+              returnTo={returnTo}
+              error={searchParams.get("error")}
+            />
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <Input
+                  id="access-key"
+                  type="password"
+                  placeholder={t("accessKeyPlaceholder")}
+                  value={key}
+                  onChange={(e) => setKey(e.target.value)}
+                  autoComplete="off"
+                />
+              </div>
 
-            {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+              {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
-            <Button type="submit" className="w-full" disabled={loading || !key}>
-              {loading ? t("signingIn") : t("signIn")}
-            </Button>
-          </form>
+              <Button type="submit" className="w-full" disabled={loading || !key}>
+                {loading ? t("signingIn") : t("signIn")}
+              </Button>
+            </form>
+          )}
         </CardContent>
       </Card>
     </div>
