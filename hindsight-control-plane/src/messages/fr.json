@@ -2422,6 +2422,40 @@
         "writer": "Writer",
         "owner": "Owner"
       }
+    },
+    "tokens": {
+      "title": "My API tokens",
+      "description": "Personal tokens let agents, MCP clients and scripts call Hindsight as you, with exactly your access. Treat them like passwords.",
+      "newToken": "New token",
+      "newTokenDescription": "Name it after where it will be used, so you know what breaks if you revoke it.",
+      "name": "Name",
+      "namePlaceholder": "e.g. laptop Claude Code",
+      "expiresOn": "Expires on",
+      "expiresHelp": "Optional. Leave empty for a token that does not expire.",
+      "create": "Create token",
+      "cancel": "Cancel",
+      "createdTitle": "Copy your new token",
+      "createdWarning": "This is the only time it is shown. Store it somewhere safe; if you lose it, revoke it and create another.",
+      "copy": "Copy token",
+      "copied": "Token copied",
+      "copyFailed": "Could not copy; select the token and copy it by hand",
+      "done": "Done",
+      "empty": "No tokens yet.",
+      "token": "Token",
+      "created": "Created",
+      "lastUsed": "Last used",
+      "expires": "Expires",
+      "never": "Never",
+      "statusLabel": "Status",
+      "status": {
+        "active": "Active",
+        "expired": "Expired",
+        "revoked": "Revoked"
+      },
+      "revoke": "Revoke",
+      "revokeTitle": "Revoke this token?",
+      "revokeDescription": "Anything using “{name}” stops working immediately. This cannot be undone.",
+      "revokeConfirm": "Revoke token"
     }
   }
 }
