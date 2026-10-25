@@ -188,7 +188,9 @@
     "cloneIncludeBankConfigHint": "Anulaciones de configuración, directivas y webhooks: la copia llamará a los mismos endpoints.",
     "cloneIncludeHistory": "Historial",
     "cloneIncludeHistoryHint": "Registro de auditoría y trazas de peticiones al LLM.",
-    "cloneNothingSelected": "Elige al menos un elemento para copiar."
+    "cloneNothingSelected": "Elige al menos un elemento para copiar.",
+    "access": "Access",
+    "accessDescription": "Choose who can use this bank and what they can do."
   },
   "bankProfile": {
     "noBankSelected": "Ningún banco seleccionado",
@@ -2380,5 +2382,46 @@
     "legendRemovedLater": "Eliminada por un cambio posterior",
     "legendRemovedHere": "Eliminada por este cambio",
     "chipRemovedLater": "Eliminada después por: {kind} ({when})"
+  },
+  "rbac": {
+    "picker": {
+      "search": "Search by name or email…",
+      "searching": "Searching…",
+      "noMatches": "No matching people or teams"
+    },
+    "access": {
+      "readOnlyNote": "Only the bank's owner or an admin can change who has access.",
+      "noAccess": "You no longer have access to this bank's sharing settings.",
+      "visibilityTitle": "Visibility",
+      "visibilityDescription": "Whether people need to be added before they can use this bank.",
+      "visibility": "Visibility",
+      "visibilityPrivate": "Private",
+      "visibilityPublic": "Public",
+      "privateHelp": "Only the owner, admins, and the people and teams below can use this bank.",
+      "publicHelp": "Anyone signed in can read and add memories. Only admins can delete it.",
+      "ownerTitle": "Owner",
+      "ownerDescription": "The owner manages sharing and can delete a private bank.",
+      "noOwner": "No owner. Only admins manage this bank.",
+      "transferOwnership": "Transfer ownership",
+      "transferTitle": "Transfer ownership?",
+      "transferDescription": "{name} becomes the owner. You keep only the access your grants or admin role give you.",
+      "transferConfirm": "Transfer",
+      "cancel": "Cancel",
+      "grantsTitle": "People and teams with access",
+      "grantsDescription": "Readers can search and read memories, writers can also add them, owners can also manage sharing.",
+      "noGrants": "Not shared with anyone yet.",
+      "name": "Name",
+      "role": "Role",
+      "remove": "Remove access",
+      "newRole": "Role for new access",
+      "addPeople": "Add people or teams",
+      "kindTeam": "Team",
+      "kindPerson": "Person",
+      "roles": {
+        "reader": "Reader",
+        "writer": "Writer",
+        "owner": "Owner"
+      }
+    }
   }
 }

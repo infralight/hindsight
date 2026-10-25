@@ -21,6 +21,7 @@ import { BankOperationsView } from "@/components/bank-operations-view";
 import { MentalModelsView } from "@/components/mental-models-view";
 import { WebhooksView } from "@/components/webhooks-view";
 import { AuditLogsView } from "@/components/audit-logs-view";
+import { BankAccessView } from "@/components/rbac/bank-access-view"; // fork(rbac)
 import { LLMRequestsView } from "@/components/llm-requests-view";
 import { FeatureNotEnabled } from "@/components/feature-not-enabled";
 import { useFeatures } from "@/lib/features-context";
@@ -87,7 +88,8 @@ type BankConfigTab =
   | "configuration"
   | "webhooks"
   | "audit-logs"
-  | "llm-requests";
+  | "llm-requests"
+  | "access"; // fork(rbac)
 
 const LAST_DATA_SUB_TAB_KEY = "hindsight.memories.subTab";
 
@@ -501,6 +503,8 @@ export default function BankPage() {
                       { id: "webhooks", label: t("webhooks") },
                       { id: "audit-logs", label: t("auditLogs"), off: !auditLogEnabled },
                       { id: "llm-requests", label: t("llmRequests"), off: !llmTraceEnabled },
+                      // fork(rbac): who can use the bank.
+                      ...(features?.rbac ? [{ id: "access" as const, label: t("access") }] : []),
                     ]}
                   />
 
@@ -526,6 +530,14 @@ export default function BankPage() {
                     {bankConfigTab === "configuration" && bankConfigEnabled && (
                       <div className="space-y-6">
                         <BankConfigView />
+                      </div>
+                    )}
+                    {bankConfigTab === "access" && features?.rbac && bankId && (
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-4">
+                          {t("accessDescription")}
+                        </p>
+                        <BankAccessView bankId={bankId} />
                       </div>
                     )}
                     {bankConfigTab === "webhooks" && (
