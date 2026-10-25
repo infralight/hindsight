@@ -2456,6 +2456,48 @@
       "revokeTitle": "Revoke this token?",
       "revokeDescription": "Anything using “{name}” stops working immediately. This cannot be undone.",
       "revokeConfirm": "Revoke token"
+    },
+    "admin": {
+      "title": "Admin",
+      "description": "Manage who can sign in, which accounts are admins, the service accounts bots use, and the teams banks are shared with.",
+      "adminsOnlyTitle": "Admins only",
+      "adminsOnly": "Ask a Hindsight admin if you need a team, a service account or admin rights.",
+      "usersTab": "Users & service accounts",
+      "teamsTab": "Teams",
+      "name": "Name",
+      "cancel": "Cancel",
+      "create": "Create",
+      "save": "Save",
+      "newServiceAccount": "New service account",
+      "kind": "Type",
+      "kindUser": "User",
+      "kindService": "Service account",
+      "statusLabel": "Status",
+      "status": {
+        "active": "Active",
+        "disabled": "Disabled"
+      },
+      "lastSeen": "Last seen",
+      "never": "Never",
+      "actions": "Actions",
+      "adminBadge": "Admin",
+      "bootstrapLocked": "Configured in the server's admin list; change it there.",
+      "serviceNoAdmin": "Service accounts cannot be admins.",
+      "tokens": "Tokens",
+      "makeAdmin": "Make admin",
+      "removeAdmin": "Remove admin",
+      "disable": "Disable",
+      "enable": "Enable",
+      "newTeam": "New team",
+      "noTeams": "No teams yet.",
+      "memberCount": "{count, plural, one {# member} other {# members}}",
+      "renameTeam": "Rename team",
+      "deleteTeam": "Delete team",
+      "deleteTeamTitle": "Delete this team?",
+      "deleteTeamDescription": "“{name}” and every bank grant made to it are removed. Members keep any access granted to them directly.",
+      "deleteTeamConfirm": "Delete team",
+      "addMember": "Add member",
+      "removeMember": "Remove {name}"
     }
   }
 }
