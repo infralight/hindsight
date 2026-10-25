@@ -13,7 +13,10 @@ import type { UserSession } from "@/lib/auth/user-session";
 // On globalThis, not module scope: instrumentation and route handlers are bundled
 // separately, so a module-level variable would not be shared between them.
 const UNWRAPPED = Symbol.for("hindsight.cp.unwrappedFetch");
-type FetchHolder = { [UNWRAPPED]?: typeof fetch };
+// `next dev` restores its startup fetch on every server recompile and then clears this flag
+// (next/dist/server/lib/router-server.js resetFetch), which would drop the wrapper for good.
+const NEXT_PATCH = Symbol.for("next-patch");
+type FetchHolder = { [UNWRAPPED]?: typeof fetch; [NEXT_PATCH]?: unknown };
 
 /** fetch without the per-user credential swap — for login, where the credential being
  * checked is the one the caller supplies, not the (absent) session's. */
@@ -29,20 +32,36 @@ export function installDataplaneAuth(
   const prefix = base.pathname.replace(/\/+$/, "");
   const holder = globalThis as FetchHolder;
   if (holder[UNWRAPPED]) return; // already installed
-  const inner = globalThis.fetch;
-  holder[UNWRAPPED] = inner;
 
   const isDataplane = (url: URL) =>
     url.origin === base.origin &&
     (prefix === "" || url.pathname === prefix || url.pathname.startsWith(`${prefix}/`));
 
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const request = new Request(input, init);
-    if (!isDataplane(new URL(request.url))) return inner(input, init);
-    const headers = new Headers(request.headers);
-    headers.delete("authorization");
-    const session = await getSession();
-    if (session) headers.set("authorization", `Bearer ${session.cred}`);
-    return inner(new Request(request, { headers }));
-  }) as typeof fetch;
+  let wrapped: typeof fetch | undefined;
+  const wrap = () => {
+    if (globalThis.fetch === wrapped) return;
+    const inner = globalThis.fetch;
+    holder[UNWRAPPED] = inner;
+    wrapped = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init);
+      if (!isDataplane(new URL(request.url))) return inner(input, init);
+      const headers = new Headers(request.headers);
+      headers.delete("authorization");
+      const session = await getSession();
+      if (session) headers.set("authorization", `Bearer ${session.cred}`);
+      return inner(new Request(request, { headers }));
+    }) as typeof fetch;
+    globalThis.fetch = wrapped;
+  };
+  wrap();
+
+  let nextPatched = holder[NEXT_PATCH];
+  Object.defineProperty(globalThis, NEXT_PATCH, {
+    configurable: true,
+    get: () => nextPatched,
+    set: (value: unknown) => {
+      nextPatched = value;
+      if (value === false) wrap();
+    },
+  });
 }

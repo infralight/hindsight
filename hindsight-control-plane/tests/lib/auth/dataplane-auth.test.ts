@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { installDataplaneAuth } from "@/lib/auth/dataplane-auth";
+import { installDataplaneAuth, rawFetch } from "@/lib/auth/dataplane-auth";
 import type { UserSession } from "@/lib/auth/user-session";
 
 const DATAPLANE = "http://dataplane:8888";
@@ -16,32 +16,62 @@ const SESSION: UserSession = {
 describe("installDataplaneAuth", () => {
   let seen: Request[];
   let original: typeof fetch;
+  let recorder: typeof fetch;
   let current: UserSession | null;
 
   beforeEach(() => {
     seen = [];
     original = globalThis.fetch;
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    recorder = (async (input: RequestInfo | URL, init?: RequestInit) => {
       seen.push(new Request(input, init));
       return new Response("{}");
     }) as typeof fetch;
+    globalThis.fetch = recorder;
     current = SESSION;
     installDataplaneAuth(DATAPLANE, async () => current);
   });
   afterEach(() => {
     globalThis.fetch = original;
     delete (globalThis as Record<symbol, unknown>)[Symbol.for("hindsight.cp.unwrappedFetch")];
+    delete (globalThis as Record<symbol, unknown>)[Symbol.for("next-patch")];
     vi.restoreAllMocks();
   });
 
+  // What `next dev` does on every server recompile (router-server.js resetFetch).
+  const nextDevResetsFetch = () => {
+    globalThis.fetch = recorder;
+    (globalThis as Record<symbol, unknown>)[Symbol.for("next-patch")] = false;
+  };
+
+  it("keeps sending the user's credential after next dev resets fetch", async () => {
+    nextDevResetsFetch();
+    await fetch(`${DATAPLANE}/v1/default/banks`);
+    expect(seen[0].headers.get("authorization")).toBe("Bearer hsp_alice");
+  });
+
+  it("still hands login the unwrapped fetch after a reset", async () => {
+    nextDevResetsFetch();
+    expect(rawFetch()).toBe(recorder);
+  });
+
+  it("wraps only once when the reset flag is cleared again without a new fetch", async () => {
+    nextDevResetsFetch();
+    (globalThis as Record<symbol, unknown>)[Symbol.for("next-patch")] = false;
+    expect(rawFetch()).toBe(recorder);
+  });
+
   it("sends the signed-in user's credential to the dataplane", async () => {
-    await fetch(`${DATAPLANE}/v1/default/banks`, { headers: { Authorization: "Bearer shared-key" } });
+    await fetch(`${DATAPLANE}/v1/default/banks`, {
+      headers: { Authorization: "Bearer shared-key" },
+    });
     expect(seen[0].headers.get("authorization")).toBe("Bearer hsp_alice");
   });
 
   it("strips any credential when nobody is signed in", async () => {
     current = null;
-    await fetch(`${DATAPLANE}/v1/default/banks`, { headers: { Authorization: "Bearer shared-key" } });
+    await fetch(`${DATAPLANE}/v1/default/banks`, {
+      headers: { Authorization: "Bearer shared-key" },
+    });
     expect(seen[0].headers.get("authorization")).toBeNull();
   });
 
@@ -51,7 +81,9 @@ describe("installDataplaneAuth", () => {
   });
 
   it("handles Request inputs and keeps the method and body", async () => {
-    await fetch(new Request(`${DATAPLANE}/v1/default/banks/b/memories`, { method: "POST", body: "{}" }));
+    await fetch(
+      new Request(`${DATAPLANE}/v1/default/banks/b/memories`, { method: "POST", body: "{}" })
+    );
     expect(seen[0].method).toBe("POST");
     expect(await seen[0].text()).toBe("{}");
     expect(seen[0].headers.get("authorization")).toBe("Bearer hsp_alice");
