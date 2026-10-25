@@ -24,6 +24,8 @@ export async function GET(request: Request) {
     // fork(rbac): per-user sessions sign out through the same button.
     features.access_key_auth =
       !!process.env.HINDSIGHT_CP_ACCESS_KEY || process.env.HINDSIGHT_CP_AUTH_MODE === "rbac";
+    // fork(rbac): sharing, tokens and admin screens.
+    features.rbac = process.env.HINDSIGHT_CP_AUTH_MODE === "rbac";
     data.features = features;
 
     return NextResponse.json(data, { status: 200 });

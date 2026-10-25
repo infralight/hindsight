@@ -460,7 +460,8 @@ interface DocumentHistoryResponse {
 }
 
 export class ControlPlaneClient {
-  private async fetchApi<T>(
+  // fork(rbac): public so lib/rbac-api.ts shares the toasts and the sign-in redirect.
+  async fetchApi<T>(
     path: string,
     options?: RequestInit,
     // Bulk callers loop over many requests and report the failures themselves; one
@@ -553,6 +554,8 @@ export class ControlPlaneClient {
         throw error;
       }
 
+      // fork(rbac): the RBAC API answers deletes and membership changes with 204.
+      if (response.status === 204) return undefined as T;
       return response.json();
     } catch (error) {
       // If it's not a response error (network error, etc.), show toast. A request
@@ -2128,6 +2131,7 @@ export class ControlPlaneClient {
         audit_log: boolean;
         llm_trace: boolean;
         store_document_text: boolean;
+        rbac?: boolean; // fork(rbac)
       };
     }>("/api/version");
   }
