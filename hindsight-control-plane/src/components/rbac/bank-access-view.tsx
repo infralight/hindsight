@@ -91,7 +91,14 @@ function RoleSelect({
   );
 }
 
-export function BankAccessView({ bankId }: { bankId: string }) {
+export function BankAccessView({
+  bankId,
+  onChange,
+}: {
+  bankId: string;
+  /** Called with each access a change returns, so the page hides what the caller lost. */
+  onChange?: (access: BankAccess) => void;
+}) {
   const t = useTranslations("rbac.access");
   const [access, setAccess] = useState<BankAccess | null>(null);
   const [lost, setLost] = useState(false);
@@ -116,7 +123,10 @@ export function BankAccessView({ bankId }: { bankId: string }) {
   const mutate = async (change: () => Promise<BankAccess | null>) => {
     try {
       const next = await change();
-      if (next) setAccess(next);
+      if (next) {
+        setAccess(next);
+        onChange?.(next);
+      }
     } catch {
       // The API client already showed the error; the settings on screen are unchanged.
     }
@@ -133,6 +143,7 @@ export function BankAccessView({ bankId }: { bankId: string }) {
         return await rbac.getAccess(bankId);
       } catch {
         setLost(true);
+        if (access) onChange?.({ ...access, my_role: null, my_capabilities: [] });
         return null;
       }
     });

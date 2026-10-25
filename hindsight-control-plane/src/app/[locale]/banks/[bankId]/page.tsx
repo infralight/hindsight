@@ -113,7 +113,7 @@ export default function BankPage() {
   const { features } = useFeatures();
   const { currentBank: bankId, setCurrentBank, loadBanks } = useBank();
   // fork(rbac): hide what this caller may not do; outside rbac mode can() is always true.
-  const { access: bankAccess, can } = useBankAccess(bankId);
+  const { access: bankAccess, can, setAccess: setBankAccess } = useBankAccess(bankId);
 
   const view = (searchParams.get("view") || "home") as NavItem;
   // Memories reopens on the sub-tab the user last picked, not always World —
@@ -429,7 +429,8 @@ export default function BankPage() {
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           onClick={handleTriggerConsolidation}
-                          disabled={isConsolidating || !observationsEnabled}
+                          // fork(rbac): write actions need write access.
+                          disabled={isConsolidating || !observationsEnabled || !can("write")}
                           title={
                             !observationsEnabled ? "Observations feature is not enabled" : undefined
                           }
@@ -446,7 +447,9 @@ export default function BankPage() {
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={handleRecoverConsolidation}
-                          disabled={isRecoveringConsolidation || !observationsEnabled}
+                          disabled={
+                            isRecoveringConsolidation || !observationsEnabled || !can("write")
+                          }
                           title={
                             !observationsEnabled ? "Observations feature is not enabled" : undefined
                           }
@@ -463,7 +466,7 @@ export default function BankPage() {
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => setShowClearObservationsDialog(true)}
-                          disabled={!observationsEnabled}
+                          disabled={!observationsEnabled || !can("write")}
                           className="text-amber-600 dark:text-amber-400 focus:text-amber-700 dark:focus:text-amber-300"
                           title={
                             !observationsEnabled ? "Observations feature is not enabled" : undefined
@@ -478,7 +481,7 @@ export default function BankPage() {
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           onClick={() => setShowResetConfigDialog(true)}
-                          disabled={!bankConfigEnabled}
+                          disabled={!bankConfigEnabled || !can("write")}
                           className="text-amber-600 dark:text-amber-400 focus:text-amber-700 dark:focus:text-amber-300"
                           title={!bankConfigEnabled ? "Bank Config API is disabled" : undefined}
                         >
@@ -488,6 +491,7 @@ export default function BankPage() {
                             <span className="ml-auto text-xs text-muted-foreground">Off</span>
                           )}
                         </DropdownMenuItem>
+                        {/* fork(rbac): only the owner of a private bank, or an admin, deletes it. */}
                         {can("delete_bank") && <DropdownMenuSeparator />}
                         {can("delete_bank") && (
                           <DropdownMenuItem
@@ -559,9 +563,10 @@ export default function BankPage() {
                         <p className="text-sm text-muted-foreground mb-4">
                           {t("accessDescription")}
                         </p>
-                        <BankAccessView bankId={bankId} />
+                        <BankAccessView bankId={bankId} onChange={setBankAccess} />
                       </div>
                     )}
+                    {/* fork(rbac): can("manage") here and on audit logs below. */}
                     {bankConfigTab === "webhooks" && can("manage") && (
                       <div>
                         <p className="text-sm text-muted-foreground mb-4">

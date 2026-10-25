@@ -129,4 +129,32 @@ describe("BankAccessView", () => {
       expect(control).toHaveProperty("disabled", true);
     }
   });
+
+  it("reports each new access to the page", async () => {
+    const onChange = vi.fn();
+    rbac.getAccess.mockResolvedValue(access());
+    render(<BankAccessView bankId="b1" onChange={onChange} />);
+    await screen.findByText("Bob");
+
+    rbac.putGrant.mockResolvedValue(access(READ_ONLY));
+    await chooseOption(within(bobRow()).getByRole("combobox"), "roles.writer");
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(access(READ_ONLY)));
+  });
+
+  it("reports no capabilities when a removal costs the caller their access", async () => {
+    const onChange = vi.fn();
+    rbac.getAccess.mockResolvedValueOnce(access()).mockRejectedValue(new Error("404"));
+    rbac.deleteGrant.mockResolvedValue(undefined);
+    render(<BankAccessView bankId="b1" onChange={onChange} />);
+
+    fireEvent.click(
+      within(
+        await (async () => (await screen.findByText("Bob")).closest("tr") as HTMLElement)()
+      ).getByRole("button", { name: "remove" })
+    );
+    await screen.findByText("noAccess");
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ my_role: null, my_capabilities: [] })
+    );
+  });
 });

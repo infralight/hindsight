@@ -13,6 +13,8 @@ import { rbac, type BankAccess, type Capability } from "@/lib/rbac-api";
 export function useBankAccess(bankId: string | null): {
   access: BankAccess | null;
   can: (capability: Capability) => boolean;
+  /** For a screen that changed the access itself (the Access tab), so the page follows. */
+  setAccess: (access: BankAccess | null) => void;
 } {
   const { features } = useFeatures();
   const rbacMode = features?.rbac ?? false;
@@ -33,5 +35,5 @@ export function useBankAccess(bankId: string | null): {
 
   const can = (capability: Capability) =>
     features !== null && (!rbacMode || (access?.my_capabilities.includes(capability) ?? false));
-  return { access, can };
+  return { access, can, setAccess };
 }
