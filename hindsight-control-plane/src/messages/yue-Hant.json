@@ -63,7 +63,9 @@
     "viewOnGitHub": "在 GitHub 檢視",
     "more": "更多",
     "signedInAs": "Signed in as {name}",
-    "logout": "Log out"
+    "logout": "Log out",
+    "myTokens": "My API tokens",
+    "admin": "Admin"
   },
   "bank": {
     "bankConfiguration": "記憶庫設定",
@@ -190,7 +192,8 @@
     "cloneIncludeHistoryHint": "稽核紀錄同 LLM 請求追蹤。",
     "cloneNothingSelected": "最少揀一樣嚟複製。",
     "access": "Access",
-    "accessDescription": "Choose who can use this bank and what they can do."
+    "accessDescription": "Choose who can use this bank and what they can do.",
+    "readOnlyBank": "You have read-only access to this bank. Ask its owner or an admin for write access."
   },
   "bankProfile": {
     "noBankSelected": "未選擇記憶庫",

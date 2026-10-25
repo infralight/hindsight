@@ -63,7 +63,9 @@
     "viewOnGitHub": "Voir sur GitHub",
     "more": "Plus",
     "signedInAs": "Signed in as {name}",
-    "logout": "Log out"
+    "logout": "Log out",
+    "myTokens": "My API tokens",
+    "admin": "Admin"
   },
   "bank": {
     "bankConfiguration": "Configuration de la banque",
@@ -190,7 +192,8 @@
     "cloneIncludeHistoryHint": "Journal d'audit et traces des requêtes LLM.",
     "cloneNothingSelected": "Choisissez au moins un élément à copier.",
     "access": "Access",
-    "accessDescription": "Choose who can use this bank and what they can do."
+    "accessDescription": "Choose who can use this bank and what they can do.",
+    "readOnlyBank": "You have read-only access to this bank. Ask its owner or an admin for write access."
   },
   "bankProfile": {
     "noBankSelected": "Aucune banque sélectionnée",

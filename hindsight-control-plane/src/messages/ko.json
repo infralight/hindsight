@@ -63,7 +63,9 @@
     "viewOnGitHub": "GitHub에서 보기",
     "more": "더 보기",
     "signedInAs": "Signed in as {name}",
-    "logout": "Log out"
+    "logout": "Log out",
+    "myTokens": "My API tokens",
+    "admin": "Admin"
   },
   "bank": {
     "bankConfiguration": "뱅크 구성",
@@ -190,7 +192,8 @@
     "cloneIncludeHistoryHint": "감사 로그와 LLM 요청 추적.",
     "cloneNothingSelected": "복사할 항목을 하나 이상 선택하세요.",
     "access": "Access",
-    "accessDescription": "Choose who can use this bank and what they can do."
+    "accessDescription": "Choose who can use this bank and what they can do.",
+    "readOnlyBank": "You have read-only access to this bank. Ask its owner or an admin for write access."
   },
   "bankProfile": {
     "noBankSelected": "선택된 뱅크 없음",

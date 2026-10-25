@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { Plus, User, Users } from "lucide-react";
+import { Plus, User, Users, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -38,6 +38,7 @@ interface DirectoryPickerProps {
   onPick: (picked: PickedGrantee) => void;
   placeholder: string;
   disabled?: boolean;
+  icon?: LucideIcon;
 }
 
 export function DirectoryPicker({
@@ -46,6 +47,7 @@ export function DirectoryPicker({
   onPick,
   placeholder,
   disabled,
+  icon: Icon = Plus,
 }: DirectoryPickerProps) {
   const t = useTranslations("rbac.picker");
   const [open, setOpen] = useState(false);
@@ -98,7 +100,7 @@ export function DirectoryPicker({
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <Button variant="outline" size="sm" disabled={disabled} aria-label={placeholder}>
-          <Plus className="mr-1.5 h-4 w-4" />
+          <Icon className="mr-1.5 h-4 w-4" />
           {placeholder}
         </Button>
       </PopoverTrigger>

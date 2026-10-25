@@ -9,7 +9,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
-import { Lock, Trash2, User, Users } from "lucide-react";
+import { ArrowRightLeft, Lock, Trash2, User, Users } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -150,7 +150,8 @@ export function BankAccessView({ bankId }: { bankId: string }) {
 
   const canManage = access.my_capabilities.includes("manage");
   const locked = !canManage;
-  const granted = new Set(access.grants.map((g) => g.principal_id));
+  // The owner already has every right a grant could give.
+  const granted = new Set([...access.grants.map((g) => g.principal_id), access.owner?.id ?? ""]);
 
   return (
     <div className="space-y-8">
@@ -201,6 +202,7 @@ export function BankAccessView({ bankId }: { bankId: string }) {
             exclude={new Set(access.owner ? [access.owner.id] : [])}
             onPick={setNewOwner}
             placeholder={t("transferOwnership")}
+            icon={ArrowRightLeft}
             disabled={locked}
           />
         </div>
