@@ -8,9 +8,11 @@
 import type { ReactNode } from "react";
 import Image from "next/image";
 import { useTranslations } from "next-intl";
-import { LockKeyhole, ScrollText, UsersRound } from "lucide-react";
+import { LockKeyhole, Moon, ScrollText, Sun, UsersRound } from "lucide-react";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { Button } from "@/components/ui/button";
 import { withBasePath } from "@/lib/base-path";
+import { useTheme } from "@/lib/theme-context";
 
 interface LoginShellProps {
   title: string;
@@ -20,6 +22,9 @@ interface LoginShellProps {
 
 export function LoginShell({ title, subtitle, children }: LoginShellProps) {
   const t = useTranslations("login");
+  const tNav = useTranslations("nav");
+  const { theme, toggleTheme } = useTheme();
+  const themeLabel = theme === "light" ? tNav("darkMode") : tNav("lightMode");
   const points = [
     { icon: LockKeyhole, text: t("brandPointPrivacy") },
     { icon: UsersRound, text: t("brandPointSharing") },
@@ -29,8 +34,9 @@ export function LoginShell({ title, subtitle, children }: LoginShellProps) {
   return (
     <div className="grid min-h-dvh bg-background lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <aside className="relative hidden overflow-hidden bg-primary-gradient text-fg-on-accent lg:flex lg:flex-col lg:justify-between lg:p-12">
-        {/* Darkens the teal end so small white text keeps 4.5:1. */}
-        <div aria-hidden className="absolute inset-0 bg-black/20" />
+        {/* Darkens the teal end so small white text keeps 4.5:1; deeper in dark mode so
+            the panel does not glare next to the dark form side. */}
+        <div aria-hidden className="absolute inset-0 bg-black/20 dark:bg-black/45" />
         <div
           aria-hidden
           className="absolute inset-0 opacity-[0.14] [background-image:linear-gradient(to_right,white_1px,transparent_1px),linear-gradient(to_bottom,white_1px,transparent_1px)] [background-size:40px_40px] [mask-image:radial-gradient(ellipse_at_top_left,black_20%,transparent_70%)]"
@@ -72,7 +78,16 @@ export function LoginShell({ title, subtitle, children }: LoginShellProps) {
       </aside>
 
       <main className="relative flex items-center justify-center px-4 py-16 sm:px-10">
-        <div className="absolute right-4 top-4">
+        <div className="absolute right-4 top-4 flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleTheme}
+            title={themeLabel}
+            aria-label={themeLabel}
+          >
+            {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+          </Button>
           <LanguageSwitcher />
         </div>
         <div className="w-full max-w-sm animate-soft-fade-in">
