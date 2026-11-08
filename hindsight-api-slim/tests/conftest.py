@@ -77,7 +77,10 @@ async def _teardown_memory_engine(mem: MemoryEngine) -> None:
     unconditionally; it's a no-op when close() already did it.
     """
     try:
-        if mem._pool and not mem._pool._closing:
+        # getattr: only asyncpg's pool has `_closing`. On Oracle the attribute read raised,
+        # the except below swallowed it, and every test leaked its pool's sessions until
+        # the Oracle listener refused new connections (ORA-12516, #5786).
+        if mem._pool and not getattr(mem._pool, "_closing", False):
             await mem.close()
     except Exception:
         pass
@@ -104,6 +107,16 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if inspect.iscoroutinefunction(getattr(item, "obj", None)):
             item.fixturenames.append("_close_aiohttp_sessions")
+
+
+@pytest.fixture
+def default_json_mode(monkeypatch):
+    """Drop a job-level ``HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE`` override.
+
+    CI turns json_object mode off for Gemma; tests asserting the default request shape
+    must not see that. ``_reset_config_cache`` makes the removal reach the config.
+    """
+    monkeypatch.delenv("HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE", raising=False)
 
 
 @pytest.fixture(autouse=True)
@@ -327,6 +340,30 @@ def pg0_db_url(db_url, tmp_path_factory, worker_id):
             cleanup_done.write_text("done")
 
     return url
+
+
+@pytest.fixture(scope="module")
+def fresh_db_url(pg0_db_url):
+    """An empty database of the module's own, on the shared test server.
+
+    For tests that walk migration history (upgrade, downgrade, seed in between):
+    they need a schema nobody else touches, but not a server of their own.
+    Starting a server per module raced xdist workers onto the same port (#5956).
+    """
+    import uuid
+
+    from sqlalchemy import create_engine, make_url, text
+
+    name = f"hs_test_{uuid.uuid4().hex[:12]}"
+    admin = create_engine(pg0_db_url, isolation_level="AUTOCOMMIT")
+    try:
+        with admin.connect() as conn:
+            conn.execute(text(f'CREATE DATABASE "{name}"'))
+        yield make_url(pg0_db_url).set(database=name).render_as_string(hide_password=False)
+        with admin.connect() as conn:
+            conn.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+    finally:
+        admin.dispose()
 
 
 def _cleanup_stale_test_data(db_url: str) -> None:

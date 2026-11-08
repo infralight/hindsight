@@ -118,7 +118,9 @@ def knowledge_bm25_arm(
         # (pg_search_vector_expr, native_inline=False) the same way memory_units
         # does — the column is plain, not generated, so it must be filled on write.
         # <&> is the NEGATIVE score (lower = more relevant); negate it.
-        expr = f"-({a}.search_vector <&> to_bm25query('idx_mental_models_text_search', tokenize({p}, 'llmlingua2')))"
+        # The scalar subquery makes the query an InitPlan, built once per statement:
+        # tokenize() is STABLE, so inline it would run again for every row (#5408).
+        expr = f"-({a}.search_vector <&> (SELECT to_bm25query('idx_mental_models_text_search', tokenize({p}, 'llmlingua2'))))"
         return KnowledgeBm25Arm(
             order_by=f"{expr} DESC",
             # Gate on a positive score: the operator ranks every row, so a bare
@@ -377,7 +379,10 @@ class PostgreSQLDialect(SQLDialect):
         if text_search_extension == "vchord":
             # <&> returns the NEGATIVE BM25 score (lower = more relevant), negate
             # for a positive score where higher = more relevant.
-            bm25_score_expr = f"-(search_vector <&> to_bm25query('idx_memory_units_text_search', tokenize({text_param}, 'llmlingua2')))"
+            # The scalar subquery makes the query an InitPlan, built once per
+            # statement: tokenize() is STABLE, so inline it would be re-run for
+            # every row, three times (target list, WHERE, ORDER BY) — #5408.
+            bm25_score_expr = f"-(search_vector <&> (SELECT to_bm25query('idx_memory_units_text_search', tokenize({text_param}, 'llmlingua2'))))"
             bm25_order_by = f"{bm25_score_expr} DESC"
             # Unlike native tsvector (which has a boolean `@@` match gate), the
             # VectorChord operator ranks *every* document, so a bare ORDER BY ...
@@ -427,7 +432,12 @@ class PostgreSQLDialect(SQLDialect):
             # bm25_language is validated as a PG identifier in HindsightConfig.validate(),
             # so embedding it as a SQL literal here is safe.
             bm25_score_expr = f"ts_rank_cd(search_vector, to_tsquery('{bm25_language}', {text_param}))"
-            bm25_order_by = f"{bm25_score_expr} DESC"
+            # ts_rank_cd yields few distinct scores, so the LIMIT cut lands inside a
+            # tie group; without `id` a parallel plan keeps a different subset each
+            # call (#6056). Free here: every match is scored and sorted anyway. The
+            # other backends above are left alone: they can hand back the top rows
+            # from the index in score order, and a second key can cost them that.
+            bm25_order_by = f"{bm25_score_expr} DESC, id"
             bm25_where_filter = f"AND search_vector @@ to_tsquery('{bm25_language}', {text_param})"
 
         arm = (

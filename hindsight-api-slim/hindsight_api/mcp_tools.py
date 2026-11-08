@@ -7,6 +7,7 @@ This module provides the core tool logic used by both:
 
 import json
 import logging
+import time
 from collections.abc import Awaitable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -17,14 +18,20 @@ from mcp.types import ToolAnnotations
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationInfo, field_validator, model_validator
 
 from hindsight_api import MemoryEngine
-from hindsight_api.api import page_markdown
 from hindsight_api.config import (
     DEFAULT_MCP_RECALL_DESCRIPTION,
     DEFAULT_MCP_RETAIN_DESCRIPTION,
 )
+from hindsight_api.engine import page_markdown
 from hindsight_api.engine.audit import AuditEntry, AuditLogger, audit_actor
-from hindsight_api.engine.memory_engine import KEEP_PARENT, Budget
-from hindsight_api.engine.response_models import VALID_RECALL_FACT_TYPES, MinScores, TemporalWindow
+from hindsight_api.engine.memory_engine import KEEP_PARENT
+from hindsight_api.engine.response_models import (
+    VALID_RECALL_FACT_TYPES,
+    Budget,
+    MinScores,
+    RerankOptions,
+    TemporalWindow,
+)
 from hindsight_api.engine.search.tags import TagGroup, TagsMatch
 from hindsight_api.engine.stored_dates import is_placeholder_date
 from hindsight_api.extensions import OperationValidationError
@@ -408,7 +415,11 @@ async def _run_tool(
 
     The two shapes are deliberately preserved, not unified: the bank-id variants
     declare ``-> str`` and callers ``json.loads`` them, so returning a dict there
-    would be a breaking change.
+    would be a breaking change. Those variants are registered with
+    ``output_schema=None``: for a ``-> str`` tool FastMCP otherwise derives a
+    wrap-result schema and also sends ``structuredContent: {"result": "<the same
+    JSON, escaped>"}``, so clients that show both got every result twice (#6279).
+    ``test_no_tool_wraps_its_json_text_in_structured_content`` guards it.
 
     Args:
         bank_id: Explicit bank from the caller, or None to use the session bank.
@@ -892,126 +903,88 @@ def _apply_bank_tool_filtering(mcp: FastMCP, memory: MemoryEngine, config: MCPTo
         logger.warning("Could not apply bank tool filtering: unknown FastMCP version")
 
 
-_AUDITABLE_MCP_TOOLS: frozenset[str] = frozenset(
+# Read-only tools are not audited, like the HTTP GET routes; every other tool is.
+# A deny-list, so a new write tool is audited without anyone remembering to add it.
+_UNAUDITED_MCP_TOOLS: frozenset[str] = frozenset(
     {
-        "retain",
-        "recall",
-        "reflect",
-        "create_bank",
-        "update_bank",
-        "delete_bank",
-        "clear_memories",
-        "create_mental_model",
-        "update_mental_model",
-        "delete_mental_model",
-        "refresh_mental_model",
-        "clear_mental_model",
-        "create_directive",
-        "delete_directive",
-        "delete_document",
-        "cancel_operation",
-        "create_knowledge_folder",
-        "create_knowledge_page",
-        "update_knowledge_node",
-        "delete_knowledge_node",
+        "get_bank",
+        "get_bank_stats",
+        "get_document",
+        "get_knowledge_base_tree",
+        "get_knowledge_page",
+        "get_memory",
+        "get_mental_model",
+        "get_operation",
+        "list_banks",
+        "list_directives",
+        "list_documents",
+        "list_memories",
+        "list_mental_models",
+        "list_operations",
+        "list_tags",
+        "search_knowledge_base",
     }
 )
 
 
 def _apply_audit_logging(mcp: FastMCP, memory: MemoryEngine, config: MCPToolsConfig) -> None:
-    """Wrap auditable MCP tool run methods with audit logging."""
+    """Log every MCP tool call, and write an audit row for the auditable ones."""
     audit_logger: AuditLogger = memory.audit_logger
+    original_call_tool = mcp.call_tool
 
-    def _wrap_tool_run(tool_name: str, original_run):
-        """Create an audited wrapper for a tool's run method."""
-
-        async def _audited_run(arguments, _name=tool_name, _orig=original_run):
-            # Cheap bank-independent pre-filter before resolving bank_id.
-            if not audit_logger.action_allowed(_name):
-                return await _orig(arguments)
-
-            bank_id = None
-            if isinstance(arguments, dict):
-                bank_id = arguments.get("bank_id") or (config.bank_id_resolver() if config.bank_id_resolver else None)
-            elif hasattr(arguments, "get"):
-                bank_id = arguments.get("bank_id")
-
-            # Per-bank decision, resolved after bank_id is known.
-            if not await audit_logger.should_log(_name, bank_id):
-                return await _orig(arguments)
-
-            entry = AuditEntry(
-                action=_name,
-                transport="mcp",
-                bank_id=bank_id,
-                started_at=datetime.now(timezone.utc),
-                request=dict(arguments) if isinstance(arguments, dict) else {"raw": str(arguments)},
+    async def _call_tool(name: str, arguments: dict[str, Any] | None = None, **kwargs: Any) -> Any:
+        # FastMCP 3 re-enters self.call_tool (this wrapper) with run_middleware=False after the
+        # middleware chain; the outer call already logs and audits it (#6071).
+        if kwargs.get("run_middleware") is False:
+            return await original_call_tool(name, arguments, **kwargs)
+        bank_id = None
+        if isinstance(arguments, dict):
+            bank_id = arguments.get("bank_id") or (config.bank_id_resolver() if config.bank_id_resolver else None)
+        start = time.monotonic()
+        status = "error"
+        try:
+            with audit_logger.destructive_op(
+                name,
+                "mcp",
+                bank_id,
+                tenant_id=config.tenant_id_resolver() if config.tenant_id_resolver else None,
+                api_key_id=config.api_key_id_resolver() if config.api_key_id_resolver else None,
+            ):
+                result = await _audited(name, bank_id, arguments, **kwargs)
+            status = "ok"
+            return result
+        finally:
+            # The MCP SDK only logs "Processing request of type CallToolRequest" (#5960).
+            logger.info(
+                "mcp tool=%s bank=%s status=%s duration_ms=%d", name, bank_id, status, (time.monotonic() - start) * 1000
             )
 
-            try:
-                result = await _orig(arguments)
-                if isinstance(result, dict):
-                    entry.response = result
-                elif isinstance(result, list):
-                    entry.response = {"items": result}
-                elif isinstance(result, str):
-                    entry.response = {"text": result}
-                return result
-            finally:
-                entry.ended_at = datetime.now(timezone.utc)
-                entry.metadata["actor"] = audit_actor(_get_request_context(config))  # fork(rbac)
-                audit_logger.log_fire_and_forget(entry)
+    async def _audited(name: str, bank_id: str | None, arguments: dict[str, Any] | None, **kwargs: Any) -> Any:
+        # Cheap bank-independent pre-filter, then the per-bank decision.
+        if (
+            name in _UNAUDITED_MCP_TOOLS
+            or not audit_logger.action_allowed(name)
+            or not await audit_logger.should_log(name, bank_id)
+        ):
+            return await original_call_tool(name, arguments, **kwargs)
 
-        return _audited_run
-
-    if hasattr(mcp, "_tool_manager"):
-        # FastMCP 2.x
+        entry = AuditEntry(
+            action=name,
+            transport="mcp",
+            bank_id=bank_id,
+            started_at=datetime.now(timezone.utc),
+            request=dict(arguments) if isinstance(arguments, dict) else {},
+        )
         try:
-            for name, tool in mcp._tool_manager._tools.items():  # type: ignore[unresolved-attribute]  # FastMCP 2.x internal; guarded by hasattr
-                if name in _AUDITABLE_MCP_TOOLS:
-                    object.__setattr__(tool, "run", _wrap_tool_run(name, tool.run))
-        except (AttributeError, KeyError) as e:
-            logger.warning(f"Could not apply MCP audit logging (v2): {e}")
-    elif hasattr(mcp, "get_tool"):
-        # FastMCP 3.x: wrap call_tool
-        original_call_tool = getattr(mcp, "call_tool", None)
-        if original_call_tool:
+            result = await original_call_tool(name, arguments, **kwargs)
+            entry.response = {"result": str(result)[:4096]}
+            return result
+        finally:
+            entry.ended_at = datetime.now(timezone.utc)
+            entry.metadata["actor"] = audit_actor(_get_request_context(config))  # fork(rbac)
+            audit_logger.log_fire_and_forget(entry)
 
-            async def _audited_call_tool(name, arguments=None, **kwargs):
-                # Cheap bank-independent pre-filter before resolving bank_id.
-                if name not in _AUDITABLE_MCP_TOOLS or not audit_logger.action_allowed(name):
-                    return await original_call_tool(name, arguments, **kwargs)
-
-                bank_id = None
-                if isinstance(arguments, dict):
-                    bank_id = arguments.get("bank_id") or (
-                        config.bank_id_resolver() if config.bank_id_resolver else None
-                    )
-
-                # Per-bank decision, resolved after bank_id is known.
-                if not await audit_logger.should_log(name, bank_id):
-                    return await original_call_tool(name, arguments, **kwargs)
-
-                entry = AuditEntry(
-                    action=name,
-                    transport="mcp",
-                    bank_id=bank_id,
-                    started_at=datetime.now(timezone.utc),
-                    request=dict(arguments) if isinstance(arguments, dict) else {},
-                )
-
-                try:
-                    result = await original_call_tool(name, arguments, **kwargs)
-                    entry.response = {"result": str(result)[:4096]}
-                    return result
-                finally:
-                    entry.ended_at = datetime.now(timezone.utc)
-                    entry.metadata["actor"] = audit_actor(_get_request_context(config))  # fork(rbac)
-                    audit_logger.log_fire_and_forget(entry)
-
-            object.__setattr__(mcp, "call_tool", _audited_call_tool)
-    else:
-        logger.warning("Could not apply MCP audit logging: unknown FastMCP version")
+    object.__setattr__(mcp, "call_tool", _call_tool)
 
 
 def _register_retain(mcp: FastMCP, memory: MemoryEngine, config: MCPToolsConfig) -> None:
@@ -1271,7 +1244,7 @@ def _register_recall(mcp: FastMCP, memory: MemoryEngine, config: MCPToolsConfig)
 
     if config.include_bank_id_param:
 
-        @mcp.tool(description=description, annotations=_tool_annotations("recall"))
+        @mcp.tool(description=description, annotations=_tool_annotations("recall"), output_schema=None)
         async def recall(
             query: str,
             max_tokens: int = 4096,
@@ -1284,6 +1257,7 @@ def _register_recall(mcp: FastMCP, memory: MemoryEngine, config: MCPToolsConfig)
             query_timestamp: str | None = None,
             min_scores: dict | None = None,
             temporal_window: dict | None = None,
+            rerank: dict | None = None,
             include_chunks: bool = False,
             max_chunk_tokens: int = 8192,
             include_entities: bool = False,
@@ -1328,6 +1302,11 @@ def _register_recall(mcp: FastMCP, memory: MemoryEngine, config: MCPToolsConfig)
                     extracting dates from the query text — pass it when you already know the range you mean.
                     It ranks memories dated inside the window higher; it does NOT drop memories dated outside
                     it, so do not use it to restrict results to a period.
+                rerank: What the decision-model reranker does beyond ordering, as an object with any of
+                    "prune" (drop results judged no help to the query) and "dedup" (drop a result that
+                    repeats a better-ranked one; costs one more decision-model request). E.g.
+                    {"prune": true, "dedup": true}. A key left out uses the bank's recall_decision_model_prune /
+                    recall_decision_model_dedup config. No effect unless a decision model is set up for recall.
                 include_chunks: Also return the source text chunks the matched facts were extracted from.
                     Use it when you need exact strings (paths, IDs, commands) that extraction may have
                     paraphrased. Default: False.
@@ -1381,6 +1360,10 @@ def _register_recall(mcp: FastMCP, memory: MemoryEngine, config: MCPToolsConfig)
                     recall_kwargs["min_scores"] = MinScores.model_validate(min_scores)
                 if temporal_window is not None:
                     recall_kwargs["temporal_window"] = TemporalWindow.model_validate(temporal_window)
+                if rerank is not None:
+                    rerank_options = RerankOptions.model_validate(rerank)
+                    recall_kwargs["prune"] = rerank_options.prune
+                    recall_kwargs["dedup"] = rerank_options.dedup
 
                 recall_result = await memory.recall_async(**recall_kwargs)
 
@@ -1412,6 +1395,7 @@ def _register_recall(mcp: FastMCP, memory: MemoryEngine, config: MCPToolsConfig)
             query_timestamp: str | None = None,
             min_scores: dict | None = None,
             temporal_window: dict | None = None,
+            rerank: dict | None = None,
             include_chunks: bool = False,
             max_chunk_tokens: int = 8192,
             include_entities: bool = False,
@@ -1455,6 +1439,11 @@ def _register_recall(mcp: FastMCP, memory: MemoryEngine, config: MCPToolsConfig)
                     extracting dates from the query text — pass it when you already know the range you mean.
                     It ranks memories dated inside the window higher; it does NOT drop memories dated outside
                     it, so do not use it to restrict results to a period.
+                rerank: What the decision-model reranker does beyond ordering, as an object with any of
+                    "prune" (drop results judged no help to the query) and "dedup" (drop a result that
+                    repeats a better-ranked one; costs one more decision-model request). E.g.
+                    {"prune": true, "dedup": true}. A key left out uses the bank's recall_decision_model_prune /
+                    recall_decision_model_dedup config. No effect unless a decision model is set up for recall.
                 include_chunks: Also return the source text chunks the matched facts were extracted from.
                     Use it when you need exact strings (paths, IDs, commands) that extraction may have
                     paraphrased. Default: False.
@@ -1507,6 +1496,10 @@ def _register_recall(mcp: FastMCP, memory: MemoryEngine, config: MCPToolsConfig)
                     recall_kwargs["min_scores"] = MinScores.model_validate(min_scores)
                 if temporal_window is not None:
                     recall_kwargs["temporal_window"] = TemporalWindow.model_validate(temporal_window)
+                if rerank is not None:
+                    rerank_options = RerankOptions.model_validate(rerank)
+                    recall_kwargs["prune"] = rerank_options.prune
+                    recall_kwargs["dedup"] = rerank_options.dedup
 
                 recall_result = await memory.recall_async(**recall_kwargs)
 
@@ -1526,7 +1519,7 @@ def _register_reflect(mcp: FastMCP, memory: MemoryEngine, config: MCPToolsConfig
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("reflect"))
+        @mcp.tool(annotations=_tool_annotations("reflect"), output_schema=None)
         async def reflect(
             query: str,
             context: str | None = None,
@@ -1718,7 +1711,7 @@ def _register_reflect(mcp: FastMCP, memory: MemoryEngine, config: MCPToolsConfig
 def _register_list_banks(mcp: FastMCP, memory: MemoryEngine, config: MCPToolsConfig) -> None:
     """Register the list_banks tool."""
 
-    @mcp.tool(annotations=_tool_annotations("list_banks"))
+    @mcp.tool(annotations=_tool_annotations("list_banks"), output_schema=None)
     async def list_banks(query: str | None = None, limit: _Limit = 100, offset: _Offset = 0) -> str:
         """
         List available memory banks, most recently written first.
@@ -1754,7 +1747,7 @@ def _register_list_banks(mcp: FastMCP, memory: MemoryEngine, config: MCPToolsCon
 def _register_create_bank(mcp: FastMCP, memory: MemoryEngine, config: MCPToolsConfig) -> None:
     """Register the create_bank tool."""
 
-    @mcp.tool(annotations=_tool_annotations("create_bank"))
+    @mcp.tool(annotations=_tool_annotations("create_bank"), output_schema=None)
     async def create_bank(bank_id: str, name: str | None = None, mission: str | None = None) -> str:
         """
         Create a new memory bank or get an existing one.
@@ -1840,7 +1833,7 @@ def _register_list_mental_models(mcp: FastMCP, memory: MemoryEngine, config: MCP
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("list_mental_models"))
+        @mcp.tool(annotations=_tool_annotations("list_mental_models"), output_schema=None)
         async def list_mental_models(
             tags: list[str] | None = None,
             limit: _Limit1000 = 100,
@@ -1921,7 +1914,7 @@ def _register_get_mental_model(mcp: FastMCP, memory: MemoryEngine, config: MCPTo
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("get_mental_model"))
+        @mcp.tool(annotations=_tool_annotations("get_mental_model"), output_schema=None)
         async def get_mental_model(
             mental_model_id: str,
             detail: str = "full",
@@ -2028,7 +2021,7 @@ def _register_create_mental_model(mcp: FastMCP, memory: MemoryEngine, config: MC
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("create_mental_model"))
+        @mcp.tool(annotations=_tool_annotations("create_mental_model"), output_schema=None)
         async def create_mental_model(
             name: str,
             source_query: str,
@@ -2055,7 +2048,7 @@ def _register_create_mental_model(mcp: FastMCP, memory: MemoryEngine, config: MC
             Args:
                 name: Human-readable name for the mental model
                 source_query: The query to run through reflect to generate content
-                mental_model_id: Optional custom ID (alphanumeric lowercase with hyphens). Auto-generated if not provided.
+                mental_model_id: Optional custom ID (same rules as a bank id: at most 192 bytes of UTF-8, no '/' and no control characters). Auto-generated if not provided.
                 tags: Optional tags for scoped visibility filtering
                 tags_match: How this model's tags are matched against memories when the content
                     is (re)generated. One of 'any' (match any tag, like recall/reflect), 'all'
@@ -2121,7 +2114,7 @@ def _register_create_mental_model(mcp: FastMCP, memory: MemoryEngine, config: MC
             Args:
                 name: Human-readable name for the mental model
                 source_query: The query to run through reflect to generate content
-                mental_model_id: Optional custom ID (alphanumeric lowercase with hyphens). Auto-generated if not provided.
+                mental_model_id: Optional custom ID (same rules as a bank id: at most 192 bytes of UTF-8, no '/' and no control characters). Auto-generated if not provided.
                 tags: Optional tags for scoped visibility filtering
                 tags_match: How this model's tags are matched against memories when the content
                     is (re)generated. One of 'any' (match any tag, like recall/reflect), 'all'
@@ -2204,7 +2197,7 @@ def _register_update_mental_model(mcp: FastMCP, memory: MemoryEngine, config: MC
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("update_mental_model"))
+        @mcp.tool(annotations=_tool_annotations("update_mental_model"), output_schema=None)
         async def update_mental_model(
             mental_model_id: str,
             name: str | None = None,
@@ -2322,7 +2315,7 @@ def _register_delete_mental_model(mcp: FastMCP, memory: MemoryEngine, config: MC
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("delete_mental_model"))
+        @mcp.tool(annotations=_tool_annotations("delete_mental_model"), output_schema=None)
         async def delete_mental_model(
             mental_model_id: str,
             bank_id: str | None = None,
@@ -2386,7 +2379,7 @@ def _register_refresh_mental_model(mcp: FastMCP, memory: MemoryEngine, config: M
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("refresh_mental_model"))
+        @mcp.tool(annotations=_tool_annotations("refresh_mental_model"), output_schema=None)
         async def refresh_mental_model(
             mental_model_id: str,
             bank_id: str | None = None,
@@ -2458,7 +2451,7 @@ def _register_clear_mental_model(mcp: FastMCP, memory: MemoryEngine, config: MCP
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("clear_mental_model"))
+        @mcp.tool(annotations=_tool_annotations("clear_mental_model"), output_schema=None)
         async def clear_mental_model(
             mental_model_id: str,
             bank_id: str | None = None,
@@ -2743,7 +2736,7 @@ def _register_get_knowledge_base_tree(mcp: FastMCP, memory: MemoryEngine, config
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("get_knowledge_base_tree"))
+        @mcp.tool(annotations=_tool_annotations("get_knowledge_base_tree"), output_schema=None)
         async def get_knowledge_base_tree(
             bank_id: str | None = None,
         ) -> str:
@@ -2805,7 +2798,7 @@ def _register_search_knowledge_base(mcp: FastMCP, memory: MemoryEngine, config: 
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("search_knowledge_base"))
+        @mcp.tool(annotations=_tool_annotations("search_knowledge_base"), output_schema=None)
         async def search_knowledge_base(
             query: str,
             limit: int = 10,
@@ -2866,7 +2859,7 @@ def _register_get_knowledge_page(mcp: FastMCP, memory: MemoryEngine, config: MCP
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("get_knowledge_page"))
+        @mcp.tool(annotations=_tool_annotations("get_knowledge_page"), output_schema=None)
         async def get_knowledge_page(
             page_id: str,
             bank_id: str | None = None,
@@ -2925,7 +2918,7 @@ def _register_create_knowledge_folder(mcp: FastMCP, memory: MemoryEngine, config
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("create_knowledge_folder"))
+        @mcp.tool(annotations=_tool_annotations("create_knowledge_folder"), output_schema=None)
         async def create_knowledge_folder(
             name: str,
             parent_id: str | None = None,
@@ -3004,7 +2997,7 @@ def _register_create_knowledge_page(mcp: FastMCP, memory: MemoryEngine, config: 
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("create_knowledge_page"))
+        @mcp.tool(annotations=_tool_annotations("create_knowledge_page"), output_schema=None)
         async def create_knowledge_page(
             name: str,
             source_query: str,
@@ -3135,7 +3128,7 @@ def _register_update_knowledge_node(mcp: FastMCP, memory: MemoryEngine, config: 
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("update_knowledge_node"))
+        @mcp.tool(annotations=_tool_annotations("update_knowledge_node"), output_schema=None)
         async def update_knowledge_node(
             node_id: str,
             name: str | None = None,
@@ -3254,7 +3247,7 @@ def _register_delete_knowledge_node(mcp: FastMCP, memory: MemoryEngine, config: 
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("delete_knowledge_node"))
+        @mcp.tool(annotations=_tool_annotations("delete_knowledge_node"), output_schema=None)
         async def delete_knowledge_node(
             node_id: str,
             bank_id: str | None = None,
@@ -3324,7 +3317,7 @@ def _register_list_directives(mcp: FastMCP, memory: MemoryEngine, config: MCPToo
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("list_directives"))
+        @mcp.tool(annotations=_tool_annotations("list_directives"), output_schema=None)
         async def list_directives(
             tags: list[str] | None = None,
             active_only: bool = True,
@@ -3404,7 +3397,7 @@ def _register_create_directive(mcp: FastMCP, memory: MemoryEngine, config: MCPTo
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("create_directive"))
+        @mcp.tool(annotations=_tool_annotations("create_directive"), output_schema=None)
         async def create_directive(
             name: str,
             content: str,
@@ -3480,7 +3473,7 @@ def _register_delete_directive(mcp: FastMCP, memory: MemoryEngine, config: MCPTo
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("delete_directive"))
+        @mcp.tool(annotations=_tool_annotations("delete_directive"), output_schema=None)
         async def delete_directive(
             directive_id: str,
             bank_id: str | None = None,
@@ -3558,7 +3551,7 @@ def _register_list_memories(mcp: FastMCP, memory: MemoryEngine, config: MCPTools
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("list_memories"))
+        @mcp.tool(annotations=_tool_annotations("list_memories"), output_schema=None)
         async def list_memories(
             type: str | None = None,
             q: str | None = None,
@@ -3644,7 +3637,7 @@ def _register_get_memory(mcp: FastMCP, memory: MemoryEngine, config: MCPToolsCon
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("get_memory"))
+        @mcp.tool(annotations=_tool_annotations("get_memory"), output_schema=None)
         async def get_memory(
             memory_id: str,
             bank_id: str | None = None,
@@ -3743,7 +3736,7 @@ def _register_update_memory(mcp: FastMCP, memory: MemoryEngine, config: MCPTools
 
     if config.include_bank_id_param:
 
-        @mcp.tool(description=_EDIT_DOC, annotations=_tool_annotations("update_memory"))
+        @mcp.tool(description=_EDIT_DOC, annotations=_tool_annotations("update_memory"), output_schema=None)
         async def update_memory(
             memory_id: str,
             text: str | None = None,
@@ -3848,7 +3841,7 @@ def _register_invalidate_memory(mcp: FastMCP, memory: MemoryEngine, config: MCPT
 
     if config.include_bank_id_param:
 
-        @mcp.tool(description=_INVALIDATE_DOC, annotations=_tool_annotations("invalidate_memory"))
+        @mcp.tool(description=_INVALIDATE_DOC, annotations=_tool_annotations("invalidate_memory"), output_schema=None)
         async def invalidate_memory(
             memory_id: str,
             reason: str | None = None,
@@ -3915,7 +3908,7 @@ def _register_list_documents(mcp: FastMCP, memory: MemoryEngine, config: MCPTool
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("list_documents"))
+        @mcp.tool(annotations=_tool_annotations("list_documents"), output_schema=None)
         async def list_documents(
             q: str | None = None,
             limit: _Limit = 100,
@@ -3991,7 +3984,7 @@ def _register_get_document(mcp: FastMCP, memory: MemoryEngine, config: MCPToolsC
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("get_document"))
+        @mcp.tool(annotations=_tool_annotations("get_document"), output_schema=None)
         async def get_document(
             document_id: str,
             bank_id: str | None = None,
@@ -4049,7 +4042,7 @@ def _register_delete_document(mcp: FastMCP, memory: MemoryEngine, config: MCPToo
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("delete_document"))
+        @mcp.tool(annotations=_tool_annotations("delete_document"), output_schema=None)
         async def delete_document(
             document_id: str,
             bank_id: str | None = None,
@@ -4120,7 +4113,7 @@ def _register_list_operations(mcp: FastMCP, memory: MemoryEngine, config: MCPToo
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("list_operations"))
+        @mcp.tool(annotations=_tool_annotations("list_operations"), output_schema=None)
         async def list_operations(
             status: str | None = None,
             type: str | None = None,
@@ -4196,7 +4189,7 @@ def _register_get_operation(mcp: FastMCP, memory: MemoryEngine, config: MCPTools
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("get_operation"))
+        @mcp.tool(annotations=_tool_annotations("get_operation"), output_schema=None)
         async def get_operation(
             operation_id: str,
             bank_id: str | None = None,
@@ -4254,7 +4247,7 @@ def _register_cancel_operation(mcp: FastMCP, memory: MemoryEngine, config: MCPTo
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("cancel_operation"))
+        @mcp.tool(annotations=_tool_annotations("cancel_operation"), output_schema=None)
         async def cancel_operation(
             operation_id: str,
             bank_id: str | None = None,
@@ -4315,7 +4308,7 @@ def _register_list_tags(mcp: FastMCP, memory: MemoryEngine, config: MCPToolsConf
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("list_tags"))
+        @mcp.tool(annotations=_tool_annotations("list_tags"), output_schema=None)
         async def list_tags(
             q: str | None = None,
             limit: _Limit = 100,
@@ -4384,7 +4377,7 @@ def _register_get_bank(mcp: FastMCP, memory: MemoryEngine, config: MCPToolsConfi
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("get_bank"))
+        @mcp.tool(annotations=_tool_annotations("get_bank"), output_schema=None)
         async def get_bank(
             bank_id: str | None = None,
         ) -> str:
@@ -4425,7 +4418,7 @@ def _register_get_bank(mcp: FastMCP, memory: MemoryEngine, config: MCPToolsConfi
 def _register_get_bank_stats(mcp: FastMCP, memory: MemoryEngine, config: MCPToolsConfig) -> None:
     """Register the get_bank_stats tool (multi-bank only)."""
 
-    @mcp.tool(annotations=_tool_annotations("get_bank_stats"))
+    @mcp.tool(annotations=_tool_annotations("get_bank_stats"), output_schema=None)
     async def get_bank_stats(
         bank_id: str | None = None,
     ) -> str:
@@ -4506,7 +4499,7 @@ def _register_update_bank(mcp: FastMCP, memory: MemoryEngine, config: MCPToolsCo
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("update_bank"))
+        @mcp.tool(annotations=_tool_annotations("update_bank"), output_schema=None)
         async def update_bank(
             name: str | None = None,
             mission: str | None = None,
@@ -4615,7 +4608,7 @@ def _register_delete_bank(mcp: FastMCP, memory: MemoryEngine, config: MCPToolsCo
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("delete_bank"))
+        @mcp.tool(annotations=_tool_annotations("delete_bank"), output_schema=None)
         async def delete_bank(
             bank_id: str | None = None,
         ) -> str:
@@ -4671,7 +4664,7 @@ def _register_clear_memories(mcp: FastMCP, memory: MemoryEngine, config: MCPTool
 
     if config.include_bank_id_param:
 
-        @mcp.tool(annotations=_tool_annotations("clear_memories"))
+        @mcp.tool(annotations=_tool_annotations("clear_memories"), output_schema=None)
         async def clear_memories(
             type: str | None = None,
             bank_id: str | None = None,

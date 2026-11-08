@@ -150,7 +150,6 @@ WRITE_OP_CAPABILITY: dict[BankWriteOperation, Capability] = {
     BankWriteOperation.DELETE_OPERATION: _W,
     BankWriteOperation.DELETE_WEBHOOK: _M,
     BankWriteOperation.IMPORT_DOCUMENTS: _W,
-    BankWriteOperation.MERGE_BANK_MISSION: _W,
     BankWriteOperation.MOVE_KNOWLEDGE_NODE: _W,
     BankWriteOperation.RENAME_KNOWLEDGE_NODE: _W,
     BankWriteOperation.REPROCESS_DOCUMENT: _W,

@@ -39,16 +39,10 @@ jobs:
       integrations-agent-framework: ${{ steps.filter.outputs.integrations-agent-framework }}
       integrations-composio: ${{ steps.filter.outputs.integrations-composio }}
       integrations-chat: ${{ steps.filter.outputs.integrations-chat }}
-      integrations-claude-code: ${{ steps.filter.outputs.integrations-claude-code }}
       integrations-coding-agents: ${{ steps.filter.outputs.integrations-coding-agents }}
-      integrations-cline: ${{ steps.filter.outputs.integrations-cline }}
-      integrations-codex: ${{ steps.filter.outputs.integrations-codex }}
       integrations-github-copilot: ${{ steps.filter.outputs.integrations-github-copilot }}
       integrations-continue: ${{ steps.filter.outputs.integrations-continue }}
-      integrations-cursor-cli: ${{ steps.filter.outputs.integrations-cursor-cli }}
-      integrations-zcode: ${{ steps.filter.outputs.integrations-zcode }}
       integrations-agent-plugin: ${{ steps.filter.outputs.integrations-agent-plugin }}
-      integrations-copilot-cli: ${{ steps.filter.outputs.integrations-copilot-cli }}
       extensions-supabase-tenant: ${{ steps.filter.outputs.extensions-supabase-tenant }}
       extensions-static-keys-tenant: ${{ steps.filter.outputs.extensions-static-keys-tenant }}
       extensions-bank-llm-routing: ${{ steps.filter.outputs.extensions-bank-llm-routing }}
@@ -62,7 +56,6 @@ jobs:
       integrations-langgraph: ${{ steps.filter.outputs.integrations-langgraph }}
       integrations-llamaindex: ${{ steps.filter.outputs.integrations-llamaindex }}
       integrations-paperclip: ${{ steps.filter.outputs.integrations-paperclip }}
-      integrations-opencode: ${{ steps.filter.outputs.integrations-opencode }}
       integrations-eve: ${{ steps.filter.outputs.integrations-eve }}
       integrations-cursor: ${{ steps.filter.outputs.integrations-cursor }}
       integrations-zed: ${{ steps.filter.outputs.integrations-zed }}
@@ -198,22 +191,12 @@ jobs:
             - 'hindsight-integrations/composio/**'
           integrations-chat:
             - 'hindsight-integrations/chat/**'
-          integrations-claude-code:
-            - 'hindsight-integrations/claude-code/**'
           integrations-coding-agents:
             - 'hindsight-integrations/coding-agents/**'
-          integrations-cline:
-            - 'hindsight-integrations/cline/**'
-          integrations-codex:
-            - 'hindsight-integrations/codex/**'
           integrations-github-copilot:
             - 'hindsight-integrations/github-copilot/**'
           integrations-continue:
             - 'hindsight-integrations/continue/**'
-          integrations-cursor-cli:
-            - 'hindsight-integrations/cursor-cli/**'
-          integrations-copilot-cli:
-            - 'hindsight-integrations/copilot-cli/**'
           extensions-supabase-tenant:
             - 'hindsight-extensions/supabase-tenant/**'
           extensions-static-keys-tenant:
@@ -228,6 +211,7 @@ jobs:
             - 'hindsight-integrations/pydantic-ai/**'
           integrations-hermes:
             - 'hindsight-integrations/hermes/**'
+            - 'scripts/test-hermes-compat.sh'
           integrations-ag2:
             - 'hindsight-integrations/ag2/**'
           integrations-autogen:
@@ -242,16 +226,12 @@ jobs:
             - 'hindsight-integrations/haystack/**'
           integrations-paperclip:
             - 'hindsight-integrations/paperclip/**'
-          integrations-opencode:
-            - 'hindsight-integrations/opencode/**'
           integrations-eve:
             - 'hindsight-integrations/eve/**'
           integrations-cursor:
             - 'hindsight-integrations/cursor/**'
           integrations-zed:
             - 'hindsight-integrations/zed/**'
-          integrations-zcode:
-            - 'hindsight-integrations/zcode/**'
           integrations-agent-plugin:
             - 'hindsight-integrations/agent-plugin/**'
           integrations-n8n:
@@ -638,32 +618,6 @@ jobs:
       working-directory: ./hindsight-integrations/coding-agents
       run: npm run build
 
-  test-claude-code-integration:
-    needs: [detect-changes]
-    if: >-
-      (github.event_name == 'workflow_dispatch' ||
-      needs.detect-changes.outputs.integrations-claude-code == 'true' ||
-      needs.detect-changes.outputs.ci == 'true')
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    steps:
-    - uses: actions/checkout@v6
-      with:
-        ref: ${{ github.event.pull_request.head.sha || '' }}
-
-    - name: Set up Python
-      uses: actions/setup-python@v6
-      with:
-        python-version: '3.11'
-
-    - name: Install pytest
-      run: pip install pytest
-
-    - name: Run tests
-      working-directory: ./hindsight-integrations/claude-code
-      run: python -m pytest tests/ -v
-
   test-cursor-integration:
     needs: [detect-changes]
     if: >-
@@ -742,43 +696,6 @@ jobs:
       working-directory: ./hindsight-integrations/omo
       run: python -m pytest tests/ -v
 
-  test-cline-integration:
-    needs: [detect-changes]
-    if: >-
-      (github.event_name == 'workflow_dispatch' ||
-      needs.detect-changes.outputs.integrations-cline == 'true' ||
-      needs.detect-changes.outputs.ci == 'true')
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    steps:
-    - uses: actions/checkout@v6
-      with:
-        ref: ${{ github.event.pull_request.head.sha || '' }}
-
-    - name: Install uv
-      uses: astral-sh/setup-uv@v7
-      with:
-        enable-cache: true
-        prune-cache: false
-
-    - name: Set up Python
-      uses: actions/setup-python@v6
-      with:
-        python-version-file: ".python-version"
-
-    - name: Build cline integration
-      working-directory: ./hindsight-integrations/cline
-      run: uv build
-
-    - name: Install dependencies
-      working-directory: ./hindsight-integrations/cline
-      run: uv sync --frozen
-
-    - name: Run tests
-      working-directory: ./hindsight-integrations/cline
-      run: uv run pytest tests -v
-
   test-github-copilot-integration:
     needs: [detect-changes]
     if: >-
@@ -817,106 +734,6 @@ jobs:
       # PR CI runs only the deterministic bucket; the real-LLM E2E bucket
       # (requires_real_llm) needs a live Hindsight server and runs separately.
       run: uv run pytest tests -v -m "not requires_real_llm"
-
-  test-codex-integration:
-    needs: [detect-changes]
-    if: >-
-      (github.event_name == 'workflow_dispatch' ||
-      needs.detect-changes.outputs.integrations-codex == 'true' ||
-      needs.detect-changes.outputs.ci == 'true')
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    steps:
-    - uses: actions/checkout@v6
-      with:
-        ref: ${{ github.event.pull_request.head.sha || '' }}
-
-    - name: Set up Python
-      uses: actions/setup-python@v6
-      with:
-        python-version: '3.11'
-
-    - name: Install pytest
-      run: pip install pytest
-
-    - name: Run tests
-      working-directory: ./hindsight-integrations/codex
-      run: python -m pytest tests/ -v
-
-  test-cursor-cli-integration:
-    needs: [detect-changes]
-    if: >-
-      (github.event_name == 'workflow_dispatch' ||
-      needs.detect-changes.outputs.integrations-cursor-cli == 'true' ||
-      needs.detect-changes.outputs.ci == 'true')
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    steps:
-    - uses: actions/checkout@v6
-      with:
-        ref: ${{ github.event.pull_request.head.sha || '' }}
-
-    - name: Install uv
-      uses: astral-sh/setup-uv@v7
-      with:
-        enable-cache: true
-        prune-cache: false
-
-    - name: Set up Python
-      uses: actions/setup-python@v6
-      with:
-        python-version-file: ".python-version"
-
-    - name: Build cursor-cli integration
-      working-directory: ./hindsight-integrations/cursor-cli
-      run: uv build
-
-    - name: Install dependencies
-      working-directory: ./hindsight-integrations/cursor-cli
-      run: uv sync --frozen
-
-    - name: Run tests
-      working-directory: ./hindsight-integrations/cursor-cli
-      run: uv run pytest tests -v
-
-  test-zcode-integration:
-    needs: [detect-changes]
-    if: >-
-      (github.event_name == 'workflow_dispatch' ||
-      needs.detect-changes.outputs.integrations-zcode == 'true' ||
-      needs.detect-changes.outputs.ci == 'true')
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    steps:
-    - uses: actions/checkout@v6
-      with:
-        ref: ${{ github.event.pull_request.head.sha || '' }}
-
-    - name: Install uv
-      uses: astral-sh/setup-uv@v7
-      with:
-        enable-cache: true
-        prune-cache: false
-
-    - name: Set up Python
-      uses: actions/setup-python@v6
-      with:
-        python-version-file: ".python-version"
-
-    - name: Build zcode integration
-      working-directory: ./hindsight-integrations/zcode
-      run: uv build
-
-    - name: Install dependencies
-      working-directory: ./hindsight-integrations/zcode
-      run: uv sync --frozen
-
-    - name: Run tests
-      working-directory: ./hindsight-integrations/zcode
-      run: uv run pytest tests -v
 
   test-agent-plugin-integration:
     needs: [detect-changes]
@@ -1033,37 +850,6 @@ jobs:
 
     - name: Build
       working-directory: ./hindsight-integrations/eliza
-      run: npm run build
-
-  test-opencode-integration:
-    needs: [detect-changes]
-    if: >-
-      (github.event_name == 'workflow_dispatch' ||
-      needs.detect-changes.outputs.integrations-opencode == 'true' ||
-      needs.detect-changes.outputs.ci == 'true')
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    steps:
-    - uses: actions/checkout@v6
-      with:
-        ref: ${{ github.event.pull_request.head.sha || '' }}
-
-    - name: Set up Node.js
-      uses: actions/setup-node@v6
-      with:
-        node-version: '22'
-
-    - name: Install dependencies
-      working-directory: ./hindsight-integrations/opencode
-      run: npm ci
-
-    - name: Run tests
-      working-directory: ./hindsight-integrations/opencode
-      run: npm test
-
-    - name: Build
-      working-directory: ./hindsight-integrations/opencode
       run: npm run build
 
   test-eve-integration:
@@ -1411,7 +1197,7 @@ jobs:
       with:
         python-version-file: ".python-version"
 
-    # The plugin is manifests and skills — no Python package of its own, like claude-code.
+    # The plugin is manifests and skills — no Python package of its own.
     - name: Install pytest
       run: pip install pytest pydantic
 
@@ -1606,9 +1392,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      HINDSIGHT_API_LLM_PROVIDER: vertexai
+      HINDSIGHT_API_LLM_PROVIDER: openai
+      HINDSIGHT_API_LLM_BASE_URL: https://inference.dev.hindsight.vectorize.io/v1
+      HINDSIGHT_API_LLM_API_KEY: ${{ secrets.HINDSIGHT_INFERENCE_DEV_API_KEY }}
+      HINDSIGHT_API_LLM_MODEL: gemma-4-26b-a4b
+      # One dev GPU serves all of CI: wait out "capacity is busy" (429) instead of failing.
+      HINDSIGHT_API_LLM_MAX_RETRIES: "8"
+      HINDSIGHT_API_LLM_INITIAL_BACKOFF: "2"
+      HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE: "false"
+      HINDSIGHT_API_VLM_PROVIDER: vertexai
+      HINDSIGHT_API_VLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY: /tmp/gcp-credentials.json
-      HINDSIGHT_API_LLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_URL: http://localhost:8888
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -1697,7 +1491,7 @@ jobs:
       uses: actions/cache@v5
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-hs-rerank-1-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-
 
@@ -1709,7 +1503,7 @@ jobs:
         print('Downloading embedding model...')
         SentenceTransformer('BAAI/bge-small-en-v1.5')
         print('Downloading cross-encoder model...')
-        CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+        CrossEncoder('hindsight-ai/hs-rerank-1')
         print('Models downloaded successfully')
         "
 
@@ -1720,6 +1514,13 @@ jobs:
         HINDSIGHT_API_LLM_MODEL=${{ env.HINDSIGHT_API_LLM_MODEL }}
         HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY=/tmp/gcp-credentials.json
         HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID=$HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID
+        HINDSIGHT_API_LLM_BASE_URL=${{ env.HINDSIGHT_API_LLM_BASE_URL }}
+        HINDSIGHT_API_LLM_API_KEY=${{ env.HINDSIGHT_API_LLM_API_KEY }}
+        HINDSIGHT_API_LLM_MAX_RETRIES=${{ env.HINDSIGHT_API_LLM_MAX_RETRIES }}
+        HINDSIGHT_API_LLM_INITIAL_BACKOFF=${{ env.HINDSIGHT_API_LLM_INITIAL_BACKOFF }}
+        HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE=${{ env.HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE }}
+        HINDSIGHT_API_VLM_PROVIDER=${{ env.HINDSIGHT_API_VLM_PROVIDER }}
+        HINDSIGHT_API_VLM_MODEL=${{ env.HINDSIGHT_API_VLM_MODEL }}
         EOF
 
     - name: Start API server
@@ -1800,6 +1601,30 @@ jobs:
         # Enabled without a Gateway to attach to is a render error.
         if helm template rel helm/hindsight --set gatewayApi.enabled=true >/dev/null 2>&1; then exit 1; fi
 
+    - name: Render api command, startupProbe, strategy and automountServiceAccountToken
+      run: |
+        # Unset by default: the default render has none of them.
+        out=$(helm template rel helm/hindsight -s templates/api-deployment.yaml)
+        if grep -qE '^ +(command|startupProbe|strategy|automountServiceAccountToken):' <<<"$out"; then exit 1; fi
+        out=$(helm template rel helm/hindsight -s templates/api-deployment.yaml \
+          --set api.strategy.type=Recreate --set api.automountServiceAccountToken=false \
+          --set-json 'api.command=["sh","-c","/app/start-all.sh"]' \
+          --set-json 'api.startupProbe={"httpGet":{"path":"/health/live","port":8888}}')
+        echo "$out"
+        grep -q 'type: Recreate' <<<"$out"
+        grep -q 'automountServiceAccountToken: false' <<<"$out"
+        grep -q '/app/start-all.sh' <<<"$out"
+        grep -q 'startupProbe:' <<<"$out"
+
+    - name: Render terminationGracePeriodSeconds
+      run: |
+        # 60s by default on both pods that run workers: the API drains in-flight
+        # tasks for 30s, cancels the rest, then hands them back (#6068).
+        out=$(helm template rel helm/hindsight --set worker.enabled=true -s templates/api-deployment.yaml -s templates/worker-statefulset.yaml)
+        test "$(grep -c 'terminationGracePeriodSeconds: 60' <<<"$out")" = 2
+        out=$(helm template rel helm/hindsight -s templates/api-deployment.yaml --set api.terminationGracePeriodSeconds=90)
+        grep -q 'terminationGracePeriodSeconds: 90' <<<"$out"
+
   test-standalone-start-script:
     needs: [detect-changes]
     if: >-
@@ -1816,6 +1641,23 @@ jobs:
 
     - name: Run standalone start script tests
       run: bash docker/standalone/test-start-all.sh
+
+  test-setup-hooks-script:
+    needs: [detect-changes]
+    if: >-
+      (github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.core == 'true' ||
+      needs.detect-changes.outputs.ci == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || '' }}
+
+    - name: Run setup-hooks script tests
+      run: ./scripts/test-setup-hooks.sh
 
   build-docker-images:
     needs: [detect-changes]
@@ -1914,13 +1756,29 @@ jobs:
     - name: Smoke test - verify container starts
       if: matrix.smoke
       env:
-        HINDSIGHT_API_LLM_PROVIDER: vertexai
-        HINDSIGHT_API_LLM_MODEL: google/gemini-2.5-flash-lite
+        HINDSIGHT_API_LLM_PROVIDER: openai
+        HINDSIGHT_API_LLM_BASE_URL: https://inference.dev.hindsight.vectorize.io/v1
+        HINDSIGHT_API_LLM_API_KEY: ${{ secrets.HINDSIGHT_INFERENCE_DEV_API_KEY }}
+        HINDSIGHT_API_LLM_MODEL: gemma-4-26b-a4b
+        # One dev GPU serves all of CI: wait out "capacity is busy" (429) instead of failing.
+        HINDSIGHT_API_LLM_MAX_RETRIES: "8"
+        HINDSIGHT_API_LLM_INITIAL_BACKOFF: "2"
+        HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE: "false"
+        HINDSIGHT_API_VLM_PROVIDER: vertexai
+        HINDSIGHT_API_VLM_MODEL: google/gemini-2.5-flash-lite
         HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY: /tmp/gcp-credentials.json
         HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID: ${{ env.HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID }}
         HINDSIGHT_API_EMBEDDINGS_PROVIDER: cohere
         HINDSIGHT_API_RERANKER_PROVIDER: cohere
         HINDSIGHT_API_COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+        # Cohere's edge sometimes 502s with "try again in 30 seconds"; the default 15s
+        # retry budget gives up before that (#6186). 0.5+1+2+4+8+16s of backoff covers it.
+        HINDSIGHT_API_EMBEDDINGS_MAX_RETRIES: "6"
+        HINDSIGHT_API_EMBEDDINGS_MAX_BACKOFF: "16"
+        HINDSIGHT_API_EMBEDDINGS_RETRY_BUDGET: "60"
+        HINDSIGHT_API_RERANKER_MAX_RETRIES: "6"
+        HINDSIGHT_API_RERANKER_MAX_BACKOFF: "16"
+        HINDSIGHT_API_RERANKER_RETRY_BUDGET: "60"
       run: ./docker/test-image.sh "hindsight-${{ matrix.name }}:test" "${{ matrix.target }}"
 
   test-api:
@@ -1942,9 +1800,17 @@ jobs:
         shard: [1, 2, 3]
     name: test-api (${{ matrix.shard }}/3)
     env:
-      HINDSIGHT_API_LLM_PROVIDER: vertexai
+      # No VLM slot here: the mock-LLM attachment tests assert that vision falls back
+      # to the retain LLM, and would otherwise send their fake images to Vertex.
+      HINDSIGHT_API_LLM_PROVIDER: openai
+      HINDSIGHT_API_LLM_BASE_URL: https://inference.dev.hindsight.vectorize.io/v1
+      HINDSIGHT_API_LLM_API_KEY: ${{ secrets.HINDSIGHT_INFERENCE_DEV_API_KEY }}
+      HINDSIGHT_API_LLM_MODEL: gemma-4-26b-a4b
+      HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE: "false"
+      # One dev GPU serves all of CI: wait out "capacity is busy" (429) instead of failing.
+      HINDSIGHT_API_LLM_MAX_RETRIES: "8"
+      HINDSIGHT_API_LLM_INITIAL_BACKOFF: "2"
       HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY: /tmp/gcp-credentials.json
-      HINDSIGHT_API_LLM_MODEL: google/gemini-2.5-flash-lite
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
@@ -2001,7 +1867,7 @@ jobs:
       uses: actions/cache@v5
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-hs-rerank-1-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-
 
@@ -2013,7 +1879,7 @@ jobs:
         print('Downloading embedding model...')
         SentenceTransformer('BAAI/bge-small-en-v1.5')
         print('Downloading cross-encoder model...')
-        CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+        CrossEncoder('hindsight-ai/hs-rerank-1')
         print('Models downloaded successfully')
         "
 
@@ -2060,21 +1926,24 @@ jobs:
     timeout-minutes: 30
     name: Core LLM tests
     env:
-      HINDSIGHT_API_LLM_PROVIDER: vertexai
-      HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY: /tmp/gcp-credentials.json
-      # gemini-3.1-flash-lite for this job only. Every test here asserts what the
-      # model chose to do, and 2.5-flash-lite is not reliable enough at the weakest
-      # of them to carry a gate: measured on this endpoint with the same prompt it
-      # kept a Japanese input in Japanese 3 times out of 10, against 10/10 for
-      # 3.1-flash-lite (test_retain_japanese_content, the largest single source of
-      # red runs here). The other jobs stay on 2.5-flash-lite — they exercise
-      # plumbing, not judgement.
-      #
-      # REGION: 3.1 is not served from us-central1 for this project (plain 404,
-      # "not found or your project does not have access"); the global endpoint
-      # serves it. us-east5 404s too, so this line is load-bearing.
-      HINDSIGHT_API_LLM_MODEL: google/gemini-3.1-flash-lite
+      # Main LLM: Gemma 4 on Hindsight Inference Dev, the model these judgement tests
+      # gate on (it replaced Vertex gemini-3.1-flash-lite). The judge stays on Gemini via
+      # GEMINI_API_KEY, so the model under test never grades itself.
+      HINDSIGHT_API_LLM_PROVIDER: openai
+      HINDSIGHT_API_LLM_BASE_URL: https://inference.dev.hindsight.vectorize.io/v1
+      HINDSIGHT_API_LLM_API_KEY: ${{ secrets.HINDSIGHT_INFERENCE_DEV_API_KEY }}
+      HINDSIGHT_API_LLM_MODEL: gemma-4-26b-a4b
+      # One dev GPU serves all of CI: wait out "capacity is busy" (429) instead of failing.
+      HINDSIGHT_API_LLM_MAX_RETRIES: "8"
+      HINDSIGHT_API_LLM_INITIAL_BACKOFF: "2"
+      # json_object mode makes Gemma open with an empty key ({"": "", "facts": []})
+      # about 1 time in 3; schema-in-prompt only was 20/20 on the temporal test.
+      HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE: "false"
+      # Attachments (images, PDFs) go to Gemini: the dev endpoint rejects 'file' parts.
+      HINDSIGHT_API_VLM_PROVIDER: vertexai
+      HINDSIGHT_API_VLM_MODEL: google/gemini-3.1-flash-lite
       HINDSIGHT_API_LLM_VERTEXAI_REGION: global
+      HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY: /tmp/gcp-credentials.json
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       # The real-LLM delta/retraction/cache evals gate on this flag *and* a key. The
       # key was already set here, so they sat skipped and the mental-model delta path —
@@ -2112,7 +1981,7 @@ jobs:
       uses: actions/cache@v5
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-hs-rerank-1-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-
 
@@ -2122,7 +1991,7 @@ jobs:
         uv run python -c "
         from sentence_transformers import SentenceTransformer, CrossEncoder
         SentenceTransformer('BAAI/bge-small-en-v1.5')
-        CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+        CrossEncoder('hindsight-ai/hs-rerank-1')
         print('Models downloaded successfully')
         "
 
@@ -2160,7 +2029,7 @@ jobs:
             model: gemini-2.5-flash-lite
             api_key_secret: GEMINI_API_KEY
           - provider: openai
-            model: gpt-4.1-nano
+            model: gpt-6-luna
             api_key_secret: OPENAI_API_KEY
           - provider: groq
             model: openai/gpt-oss-20b
@@ -2168,7 +2037,7 @@ jobs:
           - provider: bedrock
             model: us.amazon.nova-2-lite-v1:0
           - provider: litellmrouter
-            model: gpt-4.1-nano
+            model: gpt-6-luna
             # Single-deployment chain over OpenAI — verifies the Router-backed
             # call path works end-to-end. Built from secrets in the step below.
     name: LLM acceptance (${{ matrix.provider }}/${{ matrix.model }})
@@ -2215,7 +2084,7 @@ jobs:
       uses: actions/cache@v5
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-hs-rerank-1-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-
 
@@ -2225,7 +2094,7 @@ jobs:
         uv run python -c "
         from sentence_transformers import SentenceTransformer, CrossEncoder
         SentenceTransformer('BAAI/bge-small-en-v1.5')
-        CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+        CrossEncoder('hindsight-ai/hs-rerank-1')
         "
 
     - name: Build litellmrouter config
@@ -2258,9 +2127,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      HINDSIGHT_API_LLM_PROVIDER: vertexai
+      # No VLM slot here: the mock-LLM attachment tests assert that vision falls back
+      # to the retain LLM, and would otherwise send their fake images to Vertex.
+      HINDSIGHT_API_LLM_PROVIDER: openai
+      HINDSIGHT_API_LLM_BASE_URL: https://inference.dev.hindsight.vectorize.io/v1
+      HINDSIGHT_API_LLM_API_KEY: ${{ secrets.HINDSIGHT_INFERENCE_DEV_API_KEY }}
+      HINDSIGHT_API_LLM_MODEL: gemma-4-26b-a4b
+      HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE: "false"
+      # One dev GPU serves all of CI: wait out "capacity is busy" (429) instead of failing.
+      HINDSIGHT_API_LLM_MAX_RETRIES: "8"
+      HINDSIGHT_API_LLM_INITIAL_BACKOFF: "2"
       HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY: /tmp/gcp-credentials.json
-      HINDSIGHT_API_LLM_MODEL: google/gemini-2.5-flash-lite
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
@@ -2366,7 +2243,7 @@ jobs:
       uses: actions/cache@v5
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-hs-rerank-1-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-
 
@@ -2378,7 +2255,7 @@ jobs:
         print('Downloading embedding model...')
         SentenceTransformer('BAAI/bge-small-en-v1.5')
         print('Downloading cross-encoder model...')
-        CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+        CrossEncoder('hindsight-ai/hs-rerank-1')
         print('Models downloaded successfully')
         "
 
@@ -2399,9 +2276,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      HINDSIGHT_API_LLM_PROVIDER: vertexai
+      HINDSIGHT_API_LLM_PROVIDER: openai
+      HINDSIGHT_API_LLM_BASE_URL: https://inference.dev.hindsight.vectorize.io/v1
+      HINDSIGHT_API_LLM_API_KEY: ${{ secrets.HINDSIGHT_INFERENCE_DEV_API_KEY }}
+      HINDSIGHT_API_LLM_MODEL: gemma-4-26b-a4b
+      # One dev GPU serves all of CI: wait out "capacity is busy" (429) instead of failing.
+      HINDSIGHT_API_LLM_MAX_RETRIES: "8"
+      HINDSIGHT_API_LLM_INITIAL_BACKOFF: "2"
+      HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE: "false"
+      HINDSIGHT_API_VLM_PROVIDER: vertexai
+      HINDSIGHT_API_VLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY: /tmp/gcp-credentials.json
-      HINDSIGHT_API_LLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_URL: http://localhost:8888
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Prefer CPU-only PyTorch in CI (but keep PyPI for everything else)
@@ -2448,7 +2333,7 @@ jobs:
       uses: actions/cache@v5
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-hs-rerank-1-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-
 
@@ -2460,7 +2345,7 @@ jobs:
         print('Downloading embedding model...')
         SentenceTransformer('BAAI/bge-small-en-v1.5')
         print('Downloading cross-encoder model...')
-        CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+        CrossEncoder('hindsight-ai/hs-rerank-1')
         print('Models downloaded successfully')
         "
 
@@ -2471,6 +2356,13 @@ jobs:
         HINDSIGHT_API_LLM_MODEL=${{ env.HINDSIGHT_API_LLM_MODEL }}
         HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY=/tmp/gcp-credentials.json
         HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID=$HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID
+        HINDSIGHT_API_LLM_BASE_URL=${{ env.HINDSIGHT_API_LLM_BASE_URL }}
+        HINDSIGHT_API_LLM_API_KEY=${{ env.HINDSIGHT_API_LLM_API_KEY }}
+        HINDSIGHT_API_LLM_MAX_RETRIES=${{ env.HINDSIGHT_API_LLM_MAX_RETRIES }}
+        HINDSIGHT_API_LLM_INITIAL_BACKOFF=${{ env.HINDSIGHT_API_LLM_INITIAL_BACKOFF }}
+        HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE=${{ env.HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE }}
+        HINDSIGHT_API_VLM_PROVIDER=${{ env.HINDSIGHT_API_VLM_PROVIDER }}
+        HINDSIGHT_API_VLM_MODEL=${{ env.HINDSIGHT_API_VLM_MODEL }}
         EOF
 
     - name: Start API server
@@ -2511,9 +2403,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      HINDSIGHT_API_LLM_PROVIDER: vertexai
+      HINDSIGHT_API_LLM_PROVIDER: openai
+      HINDSIGHT_API_LLM_BASE_URL: https://inference.dev.hindsight.vectorize.io/v1
+      HINDSIGHT_API_LLM_API_KEY: ${{ secrets.HINDSIGHT_INFERENCE_DEV_API_KEY }}
+      HINDSIGHT_API_LLM_MODEL: gemma-4-26b-a4b
+      # One dev GPU serves all of CI: wait out "capacity is busy" (429) instead of failing.
+      HINDSIGHT_API_LLM_MAX_RETRIES: "8"
+      HINDSIGHT_API_LLM_INITIAL_BACKOFF: "2"
+      HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE: "false"
+      HINDSIGHT_API_VLM_PROVIDER: vertexai
+      HINDSIGHT_API_VLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY: /tmp/gcp-credentials.json
-      HINDSIGHT_API_LLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_URL: http://localhost:8888
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Prefer CPU-only PyTorch in CI (but keep PyPI for everything else)
@@ -2565,7 +2465,7 @@ jobs:
       uses: actions/cache@v5
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-hs-rerank-1-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-
 
@@ -2577,7 +2477,7 @@ jobs:
         print('Downloading embedding model...')
         SentenceTransformer('BAAI/bge-small-en-v1.5')
         print('Downloading cross-encoder model...')
-        CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+        CrossEncoder('hindsight-ai/hs-rerank-1')
         print('Models downloaded successfully')
         "
 
@@ -2588,6 +2488,13 @@ jobs:
         HINDSIGHT_API_LLM_MODEL=${{ env.HINDSIGHT_API_LLM_MODEL }}
         HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY=/tmp/gcp-credentials.json
         HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID=$HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID
+        HINDSIGHT_API_LLM_BASE_URL=${{ env.HINDSIGHT_API_LLM_BASE_URL }}
+        HINDSIGHT_API_LLM_API_KEY=${{ env.HINDSIGHT_API_LLM_API_KEY }}
+        HINDSIGHT_API_LLM_MAX_RETRIES=${{ env.HINDSIGHT_API_LLM_MAX_RETRIES }}
+        HINDSIGHT_API_LLM_INITIAL_BACKOFF=${{ env.HINDSIGHT_API_LLM_INITIAL_BACKOFF }}
+        HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE=${{ env.HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE }}
+        HINDSIGHT_API_VLM_PROVIDER=${{ env.HINDSIGHT_API_VLM_PROVIDER }}
+        HINDSIGHT_API_VLM_MODEL=${{ env.HINDSIGHT_API_VLM_MODEL }}
         EOF
 
     - name: Start API server
@@ -2641,9 +2548,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      HINDSIGHT_API_LLM_PROVIDER: vertexai
+      HINDSIGHT_API_LLM_PROVIDER: openai
+      HINDSIGHT_API_LLM_BASE_URL: https://inference.dev.hindsight.vectorize.io/v1
+      HINDSIGHT_API_LLM_API_KEY: ${{ secrets.HINDSIGHT_INFERENCE_DEV_API_KEY }}
+      HINDSIGHT_API_LLM_MODEL: gemma-4-26b-a4b
+      # One dev GPU serves all of CI: wait out "capacity is busy" (429) instead of failing.
+      HINDSIGHT_API_LLM_MAX_RETRIES: "8"
+      HINDSIGHT_API_LLM_INITIAL_BACKOFF: "2"
+      HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE: "false"
+      HINDSIGHT_API_VLM_PROVIDER: vertexai
+      HINDSIGHT_API_VLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY: /tmp/gcp-credentials.json
-      HINDSIGHT_API_LLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_URL: http://localhost:8888
       HINDSIGHT_API_DATABASE_BACKEND: oracle
       HINDSIGHT_API_DATABASE_URL: oracle+oracledb://hindsight_test:hindsight_test@localhost:1521/FREEPDB1
@@ -2752,7 +2667,7 @@ jobs:
       uses: actions/cache@v5
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-hs-rerank-1-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-
 
@@ -2764,7 +2679,7 @@ jobs:
         print('Downloading embedding model...')
         SentenceTransformer('BAAI/bge-small-en-v1.5')
         print('Downloading cross-encoder model...')
-        CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+        CrossEncoder('hindsight-ai/hs-rerank-1')
         print('Models downloaded successfully')
         "
 
@@ -2777,6 +2692,13 @@ jobs:
         HINDSIGHT_API_LLM_MODEL=${{ env.HINDSIGHT_API_LLM_MODEL }}
         HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY=/tmp/gcp-credentials.json
         HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID=$HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID
+        HINDSIGHT_API_LLM_BASE_URL=${{ env.HINDSIGHT_API_LLM_BASE_URL }}
+        HINDSIGHT_API_LLM_API_KEY=${{ env.HINDSIGHT_API_LLM_API_KEY }}
+        HINDSIGHT_API_LLM_MAX_RETRIES=${{ env.HINDSIGHT_API_LLM_MAX_RETRIES }}
+        HINDSIGHT_API_LLM_INITIAL_BACKOFF=${{ env.HINDSIGHT_API_LLM_INITIAL_BACKOFF }}
+        HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE=${{ env.HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE }}
+        HINDSIGHT_API_VLM_PROVIDER=${{ env.HINDSIGHT_API_VLM_PROVIDER }}
+        HINDSIGHT_API_VLM_MODEL=${{ env.HINDSIGHT_API_VLM_MODEL }}
         HINDSIGHT_API_DATABASE_BACKEND=${{ env.HINDSIGHT_API_DATABASE_BACKEND }}
         HINDSIGHT_API_DATABASE_URL=${{ env.HINDSIGHT_API_DATABASE_URL }}
         EOF
@@ -2822,9 +2744,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      HINDSIGHT_API_LLM_PROVIDER: vertexai
+      HINDSIGHT_API_LLM_PROVIDER: openai
+      HINDSIGHT_API_LLM_BASE_URL: https://inference.dev.hindsight.vectorize.io/v1
+      HINDSIGHT_API_LLM_API_KEY: ${{ secrets.HINDSIGHT_INFERENCE_DEV_API_KEY }}
+      HINDSIGHT_API_LLM_MODEL: gemma-4-26b-a4b
+      # One dev GPU serves all of CI: wait out "capacity is busy" (429) instead of failing.
+      HINDSIGHT_API_LLM_MAX_RETRIES: "8"
+      HINDSIGHT_API_LLM_INITIAL_BACKOFF: "2"
+      HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE: "false"
+      HINDSIGHT_API_VLM_PROVIDER: vertexai
+      HINDSIGHT_API_VLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY: /tmp/gcp-credentials.json
-      HINDSIGHT_API_LLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_URL: http://localhost:8888
       HINDSIGHT_API_DATABASE_BACKEND: oracle
       HINDSIGHT_API_DATABASE_URL: oracle+oracledb://hindsight_test:hindsight_test@localhost:1521/FREEPDB1
@@ -2938,7 +2868,7 @@ jobs:
       uses: actions/cache@v5
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-hs-rerank-1-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-
 
@@ -2950,7 +2880,7 @@ jobs:
         print('Downloading embedding model...')
         SentenceTransformer('BAAI/bge-small-en-v1.5')
         print('Downloading cross-encoder model...')
-        CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+        CrossEncoder('hindsight-ai/hs-rerank-1')
         print('Models downloaded successfully')
         "
 
@@ -2961,6 +2891,13 @@ jobs:
         HINDSIGHT_API_LLM_MODEL=${{ env.HINDSIGHT_API_LLM_MODEL }}
         HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY=/tmp/gcp-credentials.json
         HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID=$HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID
+        HINDSIGHT_API_LLM_BASE_URL=${{ env.HINDSIGHT_API_LLM_BASE_URL }}
+        HINDSIGHT_API_LLM_API_KEY=${{ env.HINDSIGHT_API_LLM_API_KEY }}
+        HINDSIGHT_API_LLM_MAX_RETRIES=${{ env.HINDSIGHT_API_LLM_MAX_RETRIES }}
+        HINDSIGHT_API_LLM_INITIAL_BACKOFF=${{ env.HINDSIGHT_API_LLM_INITIAL_BACKOFF }}
+        HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE=${{ env.HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE }}
+        HINDSIGHT_API_VLM_PROVIDER=${{ env.HINDSIGHT_API_VLM_PROVIDER }}
+        HINDSIGHT_API_VLM_MODEL=${{ env.HINDSIGHT_API_VLM_MODEL }}
         HINDSIGHT_API_DATABASE_BACKEND=${{ env.HINDSIGHT_API_DATABASE_BACKEND }}
         HINDSIGHT_API_DATABASE_URL=${{ env.HINDSIGHT_API_DATABASE_URL }}
         EOF
@@ -3003,9 +2940,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      HINDSIGHT_API_LLM_PROVIDER: vertexai
+      HINDSIGHT_API_LLM_PROVIDER: openai
+      HINDSIGHT_API_LLM_BASE_URL: https://inference.dev.hindsight.vectorize.io/v1
+      HINDSIGHT_API_LLM_API_KEY: ${{ secrets.HINDSIGHT_INFERENCE_DEV_API_KEY }}
+      HINDSIGHT_API_LLM_MODEL: gemma-4-26b-a4b
+      # One dev GPU serves all of CI: wait out "capacity is busy" (429) instead of failing.
+      HINDSIGHT_API_LLM_MAX_RETRIES: "8"
+      HINDSIGHT_API_LLM_INITIAL_BACKOFF: "2"
+      HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE: "false"
+      HINDSIGHT_API_VLM_PROVIDER: vertexai
+      HINDSIGHT_API_VLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY: /tmp/gcp-credentials.json
-      HINDSIGHT_API_LLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_URL: http://localhost:8888
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -3063,7 +3008,7 @@ jobs:
       uses: actions/cache@v5
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-hs-rerank-1-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-
 
@@ -3075,7 +3020,7 @@ jobs:
         print('Downloading embedding model...')
         SentenceTransformer('BAAI/bge-small-en-v1.5')
         print('Downloading cross-encoder model...')
-        CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+        CrossEncoder('hindsight-ai/hs-rerank-1')
         print('Models downloaded successfully')
         "
 
@@ -3086,6 +3031,13 @@ jobs:
         HINDSIGHT_API_LLM_MODEL=${{ env.HINDSIGHT_API_LLM_MODEL }}
         HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY=/tmp/gcp-credentials.json
         HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID=$HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID
+        HINDSIGHT_API_LLM_BASE_URL=${{ env.HINDSIGHT_API_LLM_BASE_URL }}
+        HINDSIGHT_API_LLM_API_KEY=${{ env.HINDSIGHT_API_LLM_API_KEY }}
+        HINDSIGHT_API_LLM_MAX_RETRIES=${{ env.HINDSIGHT_API_LLM_MAX_RETRIES }}
+        HINDSIGHT_API_LLM_INITIAL_BACKOFF=${{ env.HINDSIGHT_API_LLM_INITIAL_BACKOFF }}
+        HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE=${{ env.HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE }}
+        HINDSIGHT_API_VLM_PROVIDER=${{ env.HINDSIGHT_API_VLM_PROVIDER }}
+        HINDSIGHT_API_VLM_MODEL=${{ env.HINDSIGHT_API_VLM_MODEL }}
         EOF
 
     - name: Start API server
@@ -3147,6 +3099,48 @@ jobs:
       working-directory: hindsight-cli
       run: cargo build --release --target aarch64-unknown-linux-gnu
 
+  # Release ships a Windows CLI binary; build it on every CLI change so a
+  # Unix-only API surfaces here, not on release day. No server needed.
+  build-rust-cli-windows:
+    needs: [detect-changes]
+    if: >-
+      (github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.cli == 'true' ||
+      needs.detect-changes.outputs.ci == 'true')
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || '' }}
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache cargo
+      uses: actions/cache@v5
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          hindsight-cli/target
+        key: windows-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Build release binary
+      working-directory: hindsight-cli
+      run: cargo build --release
+
+    - name: Smoke-test the executable
+      shell: pwsh
+      run: |
+        $cli = './hindsight-cli/target/release/hindsight.exe'
+        & $cli --version
+        if ($LASTEXITCODE -ne 0) { throw '--version failed' }
+        foreach ($command in @('retain', 'recall', 'reflect')) {
+          & $cli memory $command --help
+          if ($LASTEXITCODE -ne 0) { throw "memory $command --help failed" }
+        }
+
   test-rust-client:
     needs: [detect-changes]
     if: >-
@@ -3158,9 +3152,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      HINDSIGHT_API_LLM_PROVIDER: vertexai
+      HINDSIGHT_API_LLM_PROVIDER: openai
+      HINDSIGHT_API_LLM_BASE_URL: https://inference.dev.hindsight.vectorize.io/v1
+      HINDSIGHT_API_LLM_API_KEY: ${{ secrets.HINDSIGHT_INFERENCE_DEV_API_KEY }}
+      HINDSIGHT_API_LLM_MODEL: gemma-4-26b-a4b
+      # One dev GPU serves all of CI: wait out "capacity is busy" (429) instead of failing.
+      HINDSIGHT_API_LLM_MAX_RETRIES: "8"
+      HINDSIGHT_API_LLM_INITIAL_BACKOFF: "2"
+      HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE: "false"
+      HINDSIGHT_API_VLM_PROVIDER: vertexai
+      HINDSIGHT_API_VLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY: /tmp/gcp-credentials.json
-      HINDSIGHT_API_LLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_URL: http://localhost:8888
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Prefer CPU-only PyTorch in CI (but keep PyPI for everything else)
@@ -3211,7 +3213,7 @@ jobs:
       uses: actions/cache@v5
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-hs-rerank-1-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-
 
@@ -3223,7 +3225,7 @@ jobs:
         print('Downloading embedding model...')
         SentenceTransformer('BAAI/bge-small-en-v1.5')
         print('Downloading cross-encoder model...')
-        CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+        CrossEncoder('hindsight-ai/hs-rerank-1')
         print('Models downloaded successfully')
         "
 
@@ -3234,6 +3236,13 @@ jobs:
         HINDSIGHT_API_LLM_MODEL=${{ env.HINDSIGHT_API_LLM_MODEL }}
         HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY=/tmp/gcp-credentials.json
         HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID=$HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID
+        HINDSIGHT_API_LLM_BASE_URL=${{ env.HINDSIGHT_API_LLM_BASE_URL }}
+        HINDSIGHT_API_LLM_API_KEY=${{ env.HINDSIGHT_API_LLM_API_KEY }}
+        HINDSIGHT_API_LLM_MAX_RETRIES=${{ env.HINDSIGHT_API_LLM_MAX_RETRIES }}
+        HINDSIGHT_API_LLM_INITIAL_BACKOFF=${{ env.HINDSIGHT_API_LLM_INITIAL_BACKOFF }}
+        HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE=${{ env.HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE }}
+        HINDSIGHT_API_VLM_PROVIDER=${{ env.HINDSIGHT_API_VLM_PROVIDER }}
+        HINDSIGHT_API_VLM_MODEL=${{ env.HINDSIGHT_API_VLM_MODEL }}
         EOF
 
     - name: Start API server
@@ -3274,9 +3283,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      HINDSIGHT_API_LLM_PROVIDER: vertexai
+      HINDSIGHT_API_LLM_PROVIDER: openai
+      HINDSIGHT_API_LLM_BASE_URL: https://inference.dev.hindsight.vectorize.io/v1
+      HINDSIGHT_API_LLM_API_KEY: ${{ secrets.HINDSIGHT_INFERENCE_DEV_API_KEY }}
+      HINDSIGHT_API_LLM_MODEL: gemma-4-26b-a4b
+      # One dev GPU serves all of CI: wait out "capacity is busy" (429) instead of failing.
+      HINDSIGHT_API_LLM_MAX_RETRIES: "8"
+      HINDSIGHT_API_LLM_INITIAL_BACKOFF: "2"
+      HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE: "false"
+      HINDSIGHT_API_VLM_PROVIDER: vertexai
+      HINDSIGHT_API_VLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY: /tmp/gcp-credentials.json
-      HINDSIGHT_API_LLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_URL: http://localhost:8888
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Prefer CPU-only PyTorch in CI (but keep PyPI for everything else)
@@ -3321,7 +3338,7 @@ jobs:
       uses: actions/cache@v5
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-hs-rerank-1-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-
 
@@ -3333,7 +3350,7 @@ jobs:
         print('Downloading embedding model...')
         SentenceTransformer('BAAI/bge-small-en-v1.5')
         print('Downloading cross-encoder model...')
-        CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+        CrossEncoder('hindsight-ai/hs-rerank-1')
         print('Models downloaded successfully')
         "
 
@@ -3344,6 +3361,13 @@ jobs:
         HINDSIGHT_API_LLM_MODEL=${{ env.HINDSIGHT_API_LLM_MODEL }}
         HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY=/tmp/gcp-credentials.json
         HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID=$HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID
+        HINDSIGHT_API_LLM_BASE_URL=${{ env.HINDSIGHT_API_LLM_BASE_URL }}
+        HINDSIGHT_API_LLM_API_KEY=${{ env.HINDSIGHT_API_LLM_API_KEY }}
+        HINDSIGHT_API_LLM_MAX_RETRIES=${{ env.HINDSIGHT_API_LLM_MAX_RETRIES }}
+        HINDSIGHT_API_LLM_INITIAL_BACKOFF=${{ env.HINDSIGHT_API_LLM_INITIAL_BACKOFF }}
+        HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE=${{ env.HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE }}
+        HINDSIGHT_API_VLM_PROVIDER=${{ env.HINDSIGHT_API_VLM_PROVIDER }}
+        HINDSIGHT_API_VLM_MODEL=${{ env.HINDSIGHT_API_VLM_MODEL }}
         EOF
 
     - name: Start API server
@@ -3389,9 +3413,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      HINDSIGHT_API_LLM_PROVIDER: vertexai
+      HINDSIGHT_API_LLM_PROVIDER: openai
+      HINDSIGHT_API_LLM_BASE_URL: https://inference.dev.hindsight.vectorize.io/v1
+      HINDSIGHT_API_LLM_API_KEY: ${{ secrets.HINDSIGHT_INFERENCE_DEV_API_KEY }}
+      HINDSIGHT_API_LLM_MODEL: gemma-4-26b-a4b
+      # One dev GPU serves all of CI: wait out "capacity is busy" (429) instead of failing.
+      HINDSIGHT_API_LLM_MAX_RETRIES: "8"
+      HINDSIGHT_API_LLM_INITIAL_BACKOFF: "2"
+      HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE: "false"
+      HINDSIGHT_API_VLM_PROVIDER: vertexai
+      HINDSIGHT_API_VLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY: /tmp/gcp-credentials.json
-      HINDSIGHT_API_LLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_URL: http://localhost:8888
       HINDSIGHT_EMBED_PACKAGE_PATH: ${{ github.workspace }}/hindsight-embed
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -3439,7 +3471,7 @@ jobs:
       uses: actions/cache@v5
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-hs-rerank-1-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-
 
@@ -3451,7 +3483,7 @@ jobs:
         print('Downloading embedding model...')
         SentenceTransformer('BAAI/bge-small-en-v1.5')
         print('Downloading cross-encoder model...')
-        CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+        CrossEncoder('hindsight-ai/hs-rerank-1')
         print('Models downloaded successfully')
         "
 
@@ -3479,6 +3511,13 @@ jobs:
         HINDSIGHT_API_LLM_MODEL=${{ env.HINDSIGHT_API_LLM_MODEL }}
         HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY=/tmp/gcp-credentials.json
         HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID=$HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID
+        HINDSIGHT_API_LLM_BASE_URL=${{ env.HINDSIGHT_API_LLM_BASE_URL }}
+        HINDSIGHT_API_LLM_API_KEY=${{ env.HINDSIGHT_API_LLM_API_KEY }}
+        HINDSIGHT_API_LLM_MAX_RETRIES=${{ env.HINDSIGHT_API_LLM_MAX_RETRIES }}
+        HINDSIGHT_API_LLM_INITIAL_BACKOFF=${{ env.HINDSIGHT_API_LLM_INITIAL_BACKOFF }}
+        HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE=${{ env.HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE }}
+        HINDSIGHT_API_VLM_PROVIDER=${{ env.HINDSIGHT_API_VLM_PROVIDER }}
+        HINDSIGHT_API_VLM_MODEL=${{ env.HINDSIGHT_API_VLM_MODEL }}
         EOF
 
     - name: Start API server
@@ -3519,9 +3558,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      HINDSIGHT_API_LLM_PROVIDER: vertexai
+      HINDSIGHT_API_LLM_PROVIDER: openai
+      HINDSIGHT_API_LLM_BASE_URL: https://inference.dev.hindsight.vectorize.io/v1
+      HINDSIGHT_API_LLM_API_KEY: ${{ secrets.HINDSIGHT_INFERENCE_DEV_API_KEY }}
+      HINDSIGHT_API_LLM_MODEL: gemma-4-26b-a4b
+      # One dev GPU serves all of CI: wait out "capacity is busy" (429) instead of failing.
+      HINDSIGHT_API_LLM_MAX_RETRIES: "8"
+      HINDSIGHT_API_LLM_INITIAL_BACKOFF: "2"
+      HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE: "false"
+      HINDSIGHT_API_VLM_PROVIDER: vertexai
+      HINDSIGHT_API_VLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY: /tmp/gcp-credentials.json
-      HINDSIGHT_API_LLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_URL: http://localhost:8888
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -3563,7 +3610,7 @@ jobs:
       uses: actions/cache@v5
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-hs-rerank-1-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-
 
@@ -3575,7 +3622,7 @@ jobs:
         print('Downloading embedding model...')
         SentenceTransformer('BAAI/bge-small-en-v1.5')
         print('Downloading cross-encoder model...')
-        CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+        CrossEncoder('hindsight-ai/hs-rerank-1')
         print('Models downloaded successfully')
         "
 
@@ -3586,6 +3633,13 @@ jobs:
         HINDSIGHT_API_LLM_MODEL=${{ env.HINDSIGHT_API_LLM_MODEL }}
         HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY=/tmp/gcp-credentials.json
         HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID=$HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID
+        HINDSIGHT_API_LLM_BASE_URL=${{ env.HINDSIGHT_API_LLM_BASE_URL }}
+        HINDSIGHT_API_LLM_API_KEY=${{ env.HINDSIGHT_API_LLM_API_KEY }}
+        HINDSIGHT_API_LLM_MAX_RETRIES=${{ env.HINDSIGHT_API_LLM_MAX_RETRIES }}
+        HINDSIGHT_API_LLM_INITIAL_BACKOFF=${{ env.HINDSIGHT_API_LLM_INITIAL_BACKOFF }}
+        HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE=${{ env.HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE }}
+        HINDSIGHT_API_VLM_PROVIDER=${{ env.HINDSIGHT_API_VLM_PROVIDER }}
+        HINDSIGHT_API_VLM_MODEL=${{ env.HINDSIGHT_API_VLM_MODEL }}
         EOF
 
     - name: Start API server
@@ -4039,43 +4093,6 @@ jobs:
       # PR CI runs only the deterministic bucket; the real-LLM E2E bucket
       # (requires_real_llm) needs a live Hindsight server and runs separately.
       run: uv run pytest tests -v -m "not requires_real_llm"
-
-  test-copilot-cli-integration:
-    needs: [detect-changes]
-    if: >-
-      (github.event_name == 'workflow_dispatch' ||
-      needs.detect-changes.outputs.integrations-copilot-cli == 'true' ||
-      needs.detect-changes.outputs.ci == 'true')
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    steps:
-    - uses: actions/checkout@v6
-      with:
-        ref: ${{ github.event.pull_request.head.sha || '' }}
-
-    - name: Install uv
-      uses: astral-sh/setup-uv@v7
-      with:
-        enable-cache: true
-        prune-cache: false
-
-    - name: Set up Python
-      uses: actions/setup-python@v6
-      with:
-        python-version-file: ".python-version"
-
-    - name: Build copilot-cli integration
-      working-directory: ./hindsight-integrations/copilot-cli
-      run: uv build
-
-    - name: Install dependencies
-      working-directory: ./hindsight-integrations/copilot-cli
-      run: uv sync --frozen
-
-    - name: Run tests
-      working-directory: ./hindsight-integrations/copilot-cli
-      run: uv run pytest tests -v
 
   test-extension-supabase-tenant:
     needs: [detect-changes]
@@ -4754,9 +4771,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      HINDSIGHT_API_LLM_PROVIDER: vertexai
+      HINDSIGHT_API_LLM_PROVIDER: openai
+      HINDSIGHT_API_LLM_BASE_URL: https://inference.dev.hindsight.vectorize.io/v1
+      HINDSIGHT_API_LLM_API_KEY: ${{ secrets.HINDSIGHT_INFERENCE_DEV_API_KEY }}
+      HINDSIGHT_API_LLM_MODEL: gemma-4-26b-a4b
+      # One dev GPU serves all of CI: wait out "capacity is busy" (429) instead of failing.
+      HINDSIGHT_API_LLM_MAX_RETRIES: "8"
+      HINDSIGHT_API_LLM_INITIAL_BACKOFF: "2"
+      HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE: "false"
+      HINDSIGHT_API_VLM_PROVIDER: vertexai
+      HINDSIGHT_API_VLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY: /tmp/gcp-credentials.json
-      HINDSIGHT_API_LLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_EMBEDDINGS_PROVIDER: cohere
       HINDSIGHT_API_RERANKER_PROVIDER: cohere
       HINDSIGHT_API_COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
@@ -4867,9 +4892,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      HINDSIGHT_API_LLM_PROVIDER: vertexai
+      HINDSIGHT_API_LLM_PROVIDER: openai
+      HINDSIGHT_API_LLM_BASE_URL: https://inference.dev.hindsight.vectorize.io/v1
+      HINDSIGHT_API_LLM_API_KEY: ${{ secrets.HINDSIGHT_INFERENCE_DEV_API_KEY }}
+      HINDSIGHT_API_LLM_MODEL: gemma-4-26b-a4b
+      # One dev GPU serves all of CI: wait out "capacity is busy" (429) instead of failing.
+      HINDSIGHT_API_LLM_MAX_RETRIES: "8"
+      HINDSIGHT_API_LLM_INITIAL_BACKOFF: "2"
+      HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE: "false"
+      HINDSIGHT_API_VLM_PROVIDER: vertexai
+      HINDSIGHT_API_VLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY: /tmp/gcp-credentials.json
-      HINDSIGHT_API_LLM_MODEL: google/gemini-2.5-flash-lite
       # Prefer CPU-only PyTorch in CI
 
     steps:
@@ -4935,9 +4968,17 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     env:
-      HINDSIGHT_API_LLM_PROVIDER: vertexai
+      HINDSIGHT_API_LLM_PROVIDER: openai
+      HINDSIGHT_API_LLM_BASE_URL: https://inference.dev.hindsight.vectorize.io/v1
+      HINDSIGHT_API_LLM_API_KEY: ${{ secrets.HINDSIGHT_INFERENCE_DEV_API_KEY }}
+      HINDSIGHT_API_LLM_MODEL: gemma-4-26b-a4b
+      # One dev GPU serves all of CI: wait out "capacity is busy" (429) instead of failing.
+      HINDSIGHT_API_LLM_MAX_RETRIES: "8"
+      HINDSIGHT_API_LLM_INITIAL_BACKOFF: "2"
+      HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE: "false"
+      HINDSIGHT_API_VLM_PROVIDER: vertexai
+      HINDSIGHT_API_VLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY: ${{ github.workspace }}/gcp-credentials.json
-      HINDSIGHT_API_LLM_MODEL: google/gemini-2.5-flash-lite
       # Force UTF-8 I/O so the CLI's ✓/box-drawing output doesn't crash the
       # default Windows cp1252 codec. Also applied at runtime via
       # sys.stdout.reconfigure in cli.py; this belt-and-suspenders covers
@@ -5103,43 +5144,25 @@ jobs:
           fi
         done || true
 
-  # Compatibility gate against hermes-agent's *main* branch.
+  # Compatibility gate: hermes-agent's *main* branch + this branch's Hermes
+  # plugin, installed the way a Hermes user installs it — Hermes' installer,
+  # `hermes plugins install hindsight` from the catalog (patched to point at
+  # this checkout), `hermes update`, then a turn through the MemoryProvider
+  # contract on an embedded daemon. See scripts/test-hermes-compat.sh.
   #
-  # `hermes memory setup` installs `hindsight-all` into Hermes' own venv to run
-  # memory in local_embedded mode, and Hermes exact-pins every direct dependency
-  # (`==X.Y.Z`) as a deliberate supply-chain policy — they will not loosen a pin
-  # for us. So any version range Hindsight declares that excludes one of their
-  # pins makes the two impossible to co-install for every Hermes user on
-  # embedded memory. That was #3251: our `cryptography>=48.0.1` / `pillow>=12.3.0`
-  # against their `==46.0.7` / `==12.2.0`, which left `pip check` permanently
-  # broken. Both sides bump on their own schedule, so this needs a standing gate
-  # rather than a one-off fix; tracking main surfaces the next collision while
-  # it is still cheap to fix on either side.
+  # Only the plugin reaches Hermes users from this repo: its hindsight-client /
+  # hindsight-embed come from PyPI, so core and client changes don't trigger it.
   #
-  # It also exercises the memory provider itself, which moved out of the Hermes
-  # tree into hindsight-integrations/hermes: the script drops Hermes' bundled
-  # copy (bundled wins on a name collision, so leaving it would test their code
-  # instead of ours), installs this checkout's plugin, and round-trips a turn
-  # through the MemoryProvider contract. That makes this the only gate covering
-  # the plugin against a real Hermes, hence the integrations-hermes trigger.
-  #
-  # Deliberately not gated on has_secrets — the resolution, wiring, runtime and
-  # daemon-boot checks need no credentials, so this runs on fork PRs too. Only
-  # the retain/recall round-trips need an LLM; the key below is empty on fork
-  # PRs and the script skips exactly those, reporting that it did.
+  # Deliberately not gated on has_secrets — everything but the retain/recall
+  # round-trip needs no credentials, so this runs on fork PRs too; the key below
+  # is empty there and the script skips exactly that, reporting that it did.
   test-hermes-compat:
     needs: [detect-changes]
     if: >-
       (github.event_name == 'workflow_dispatch' ||
-      needs.detect-changes.outputs.core == 'true' ||
-      needs.detect-changes.outputs.embed == 'true' ||
-      needs.detect-changes.outputs.hindsight-all == 'true' ||
-      needs.detect-changes.outputs.clients-python == 'true' ||
       needs.detect-changes.outputs.integrations-hermes == 'true' ||
       needs.detect-changes.outputs.ci == 'true')
     runs-on: ubuntu-latest
-    # 45 before the provider step was added; it stops the daemon and boots it
-    # again through the plugin's own path, then waits on an LLM extraction.
     timeout-minutes: 60
     permissions:
       contents: read
@@ -5155,13 +5178,14 @@ jobs:
         enable-cache: true
         prune-cache: false
 
-    # hindsight-all pulls the local-ml extra, so the embedded daemon can load
-    # sentence-transformers models. Cache them like the test-embed job does.
+    # The embedded daemon (uvx hindsight-api) loads local sentence-transformers
+    # models. Keyed on the plugin's pyproject: its hindsight-embed range decides
+    # which hindsight-api release runs. Cache them like the test-embed job does.
     - name: Cache HuggingFace models
       uses: actions/cache@v5
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-hermes-compat-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-hermes-compat-${{ hashFiles('hindsight-integrations/hermes/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-hermes-compat-
           ${{ runner.os }}-huggingface-
@@ -5195,13 +5219,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      HINDSIGHT_API_LLM_PROVIDER: vertexai
+      HINDSIGHT_API_LLM_PROVIDER: openai
+      HINDSIGHT_API_LLM_BASE_URL: https://inference.dev.hindsight.vectorize.io/v1
+      HINDSIGHT_API_LLM_API_KEY: ${{ secrets.HINDSIGHT_INFERENCE_DEV_API_KEY }}
+      HINDSIGHT_API_LLM_MODEL: gemma-4-26b-a4b
+      # One dev GPU serves all of CI: wait out "capacity is busy" (429) instead of failing.
+      HINDSIGHT_API_LLM_MAX_RETRIES: "8"
+      HINDSIGHT_API_LLM_INITIAL_BACKOFF: "2"
+      HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE: "false"
+      HINDSIGHT_API_VLM_PROVIDER: vertexai
+      HINDSIGHT_API_VLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY: /tmp/gcp-credentials.json
-      HINDSIGHT_API_LLM_MODEL: google/gemini-2.5-flash-lite
       # For test_server_integration.py compatibility
-      HINDSIGHT_LLM_PROVIDER: vertexai
-      HINDSIGHT_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY: /tmp/gcp-credentials.json
-      HINDSIGHT_LLM_MODEL: google/gemini-2.5-flash-lite
+      HINDSIGHT_LLM_PROVIDER: openai
+      HINDSIGHT_LLM_BASE_URL: https://inference.dev.hindsight.vectorize.io/v1
+      HINDSIGHT_LLM_API_KEY: ${{ secrets.HINDSIGHT_INFERENCE_DEV_API_KEY }}
+      HINDSIGHT_LLM_MODEL: gemma-4-26b-a4b
       # Prefer CPU-only PyTorch in CI
 
     steps:
@@ -5295,9 +5328,17 @@ jobs:
         language: [python, node, cli, go]
     name: test-doc-examples (${{ matrix.language }})
     env:
-      HINDSIGHT_API_LLM_PROVIDER: vertexai
+      HINDSIGHT_API_LLM_PROVIDER: openai
+      HINDSIGHT_API_LLM_BASE_URL: https://inference.dev.hindsight.vectorize.io/v1
+      HINDSIGHT_API_LLM_API_KEY: ${{ secrets.HINDSIGHT_INFERENCE_DEV_API_KEY }}
+      HINDSIGHT_API_LLM_MODEL: gemma-4-26b-a4b
+      # One dev GPU serves all of CI: wait out "capacity is busy" (429) instead of failing.
+      HINDSIGHT_API_LLM_MAX_RETRIES: "8"
+      HINDSIGHT_API_LLM_INITIAL_BACKOFF: "2"
+      HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE: "false"
+      HINDSIGHT_API_VLM_PROVIDER: vertexai
+      HINDSIGHT_API_VLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY: /tmp/gcp-credentials.json
-      HINDSIGHT_API_LLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_URL: http://localhost:8888
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -5373,7 +5414,7 @@ jobs:
       uses: actions/cache@v5
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-hs-rerank-1-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-
 
@@ -5385,7 +5426,7 @@ jobs:
         print('Downloading embedding model...')
         SentenceTransformer('BAAI/bge-small-en-v1.5')
         print('Downloading reranker model...')
-        CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+        CrossEncoder('hindsight-ai/hs-rerank-1')
         print('Models downloaded successfully')
         "
 
@@ -5396,6 +5437,13 @@ jobs:
         HINDSIGHT_API_LLM_MODEL=${{ env.HINDSIGHT_API_LLM_MODEL }}
         HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY=/tmp/gcp-credentials.json
         HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID=$HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID
+        HINDSIGHT_API_LLM_BASE_URL=${{ env.HINDSIGHT_API_LLM_BASE_URL }}
+        HINDSIGHT_API_LLM_API_KEY=${{ env.HINDSIGHT_API_LLM_API_KEY }}
+        HINDSIGHT_API_LLM_MAX_RETRIES=${{ env.HINDSIGHT_API_LLM_MAX_RETRIES }}
+        HINDSIGHT_API_LLM_INITIAL_BACKOFF=${{ env.HINDSIGHT_API_LLM_INITIAL_BACKOFF }}
+        HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE=${{ env.HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE }}
+        HINDSIGHT_API_VLM_PROVIDER=${{ env.HINDSIGHT_API_VLM_PROVIDER }}
+        HINDSIGHT_API_VLM_MODEL=${{ env.HINDSIGHT_API_VLM_MODEL }}
         EOF
 
     - name: Start API server
@@ -5439,9 +5487,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      HINDSIGHT_API_LLM_PROVIDER: vertexai
+      HINDSIGHT_API_LLM_PROVIDER: openai
+      HINDSIGHT_API_LLM_BASE_URL: https://inference.dev.hindsight.vectorize.io/v1
+      HINDSIGHT_API_LLM_API_KEY: ${{ secrets.HINDSIGHT_INFERENCE_DEV_API_KEY }}
+      HINDSIGHT_API_LLM_MODEL: gemma-4-26b-a4b
+      # One dev GPU serves all of CI: wait out "capacity is busy" (429) instead of failing.
+      HINDSIGHT_API_LLM_MAX_RETRIES: "8"
+      HINDSIGHT_API_LLM_INITIAL_BACKOFF: "2"
+      HINDSIGHT_API_LLM_OPENAI_COMPATIBLE_JSON_MODE: "false"
+      HINDSIGHT_API_VLM_PROVIDER: vertexai
+      HINDSIGHT_API_VLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY: /tmp/gcp-credentials.json
-      HINDSIGHT_API_LLM_MODEL: google/gemini-2.5-flash-lite
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
@@ -5474,7 +5530,7 @@ jobs:
       uses: actions/cache@v5
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-hs-rerank-1-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-
 
@@ -5494,7 +5550,7 @@ jobs:
         print('Downloading embedding model...')
         SentenceTransformer('BAAI/bge-small-en-v1.5')
         print('Downloading cross-encoder model...')
-        CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+        CrossEncoder('hindsight-ai/hs-rerank-1')
         print('Models downloaded successfully')
         "
 
@@ -5844,17 +5900,11 @@ jobs:
       - build-typescript-client
       - build-openclaw-integration
       - smoke-openclaw-install
-      - test-claude-code-integration
       - test-cursor-integration
-      - test-cline-integration
       - test-github-copilot-integration
-      - test-codex-integration
-      - test-cursor-cli-integration
-      - test-zcode-integration
       - test-agent-plugin-integration
       - build-ai-sdk-integration
       - test-ai-sdk-integration-deno
-      - test-opencode-integration
       - test-eve-integration
       - test-omo-integration
       - test-cloudflare-oauth-proxy-integration
@@ -5873,6 +5923,7 @@ jobs:
       - test-rust-cli
       - lint-helm-chart
       - test-standalone-start-script
+      - test-setup-hooks-script
       - build-docker-images
       - test-api
       - test-api-oracle
@@ -5882,6 +5933,7 @@ jobs:
       - test-typescript-client-oracle
       - test-typescript-client-deno
       - build-rust-cli-arm64
+      - build-rust-cli-windows
       - test-rust-client
       - test-go-client
       - test-openclaw-integration

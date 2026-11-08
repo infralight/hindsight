@@ -17,15 +17,11 @@ import pytest
 import pytest_asyncio
 
 import hindsight_api.engine.memory_engine as memory_engine_module
-from hindsight_api.api import page_markdown
+from hindsight_api.engine import page_markdown
 from hindsight_api.engine.db import DatabaseConnection
-from hindsight_api.engine.memory_engine import (
-    KnowledgeTagFilter,
-    MemoryEngine,
-    _may_need_refresh,
-    fq_table,
-)
+from hindsight_api.engine.memory_engine import KnowledgeTagFilter, MemoryEngine, _may_need_refresh
 from hindsight_api.engine.retain import embedding_utils
+from hindsight_api.engine.schema import fq_table
 from hindsight_api.extensions import (
     BankReadContext,
     BankReadOperation,
@@ -1860,7 +1856,7 @@ class TestAuthorizationWriteDenied:
         assert "Orders" not in resp.text
         assert _write_ops(validator) == []
 
-    @pytest.mark.parametrize("body", [{"tags": []}, {"max_tokens": 0}, {"name": ""}])
+    @pytest.mark.parametrize("body", [{"tags": []}, {"source_query": ""}, {"name": ""}])
     async def test_empty_but_supplied_values_still_authorize(self, api_client, kb_bank, memory, monkeypatch, body):
         """The near misses of the guard above: supplied-but-empty is a real change.
 
@@ -2095,3 +2091,12 @@ class TestTagFilter:
             f"/v1/default/banks/{_enc(bank_id)}/knowledge-base/search", params={"q": "orders billing net-30"}
         )
         assert {r["id"] for r in resp.json()["results"]} == {ids.billing}
+
+
+def test_knowledge_snippet_cuts_by_character_not_byte():
+    # #5986: SQL LEFT() on a SQL_ASCII database counts bytes and splits a CJK character,
+    # failing the whole search. The snippet is now cut in Python, by character.
+    body = "a" * 279 + "作业作业"
+    snippet = memory_engine_module._knowledge_snippet(body)
+    assert snippet == "a" * 279 + "作"
+    assert len(snippet) == memory_engine_module.KNOWLEDGE_SNIPPET_CHARS

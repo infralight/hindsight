@@ -23,7 +23,6 @@ import typer
 from ..config import DEFAULT_DATABASE_SCHEMA, HindsightConfig, load_dotenv_for_entrypoint
 from ..db_url import is_oracle_url
 from ..engine.memories import get_memories, sql_memories
-from ..engine.memory_engine import _current_schema
 from ..engine.retain.bank_utils import _vector_index_clause, bank_indexes_are_store_owned
 from ..engine.schema import fq_table_explicit as _fq_table
 from ..engine.storage import bank_storage_prefix, create_file_storage
@@ -36,6 +35,8 @@ from ..engine.vector_index_health import (
 )
 from ..extensions import TenantExtension, load_extension
 from ..pg0 import parse_pg0_url, resolve_database_url
+from ..schema_context import _current_schema
+from .reembed import SchemaReembed, finish_schema, reembed_schema
 
 # Setup logging
 logging.basicConfig(
@@ -715,6 +716,9 @@ class RepairSweep:
     # Observations removed because a source memory they cite no longer exists (#5937);
     # in a dry run, how many would be.
     orphan_observations: int = 0
+    # Observations whose keyword index was re-tokenized from their text (#5299, VectorChord only);
+    # in a dry run, how many would be.
+    rebuilt_search_vectors: int = 0
     # Counted apart from ``banks``, which stays empty on a backend without per-bank indexes.
     banks_scanned: int = 0
 
@@ -746,6 +750,7 @@ async def _run_repair_bank(
     results: list[BankIndexResult] = []
     skipped_schemas: list[str] = []
     orphan_observations = 0
+    rebuilt_search_vectors = 0
     banks_scanned = 0
     try:
         for target_schema in schemas:
@@ -764,6 +769,7 @@ async def _run_repair_bank(
             bank_ids: list[str] = []
             schema_results: list[BankIndexResult] = []
             schema_orphans = 0
+            schema_rebuilt = 0
             schema_banks_done = 0
             try:
                 bank_ids = [bank_id] if bank_id else await list_bank_ids(conn, target_schema)
@@ -775,10 +781,15 @@ async def _run_repair_bank(
                     schema_orphans += await pg_store.admin_sweep_orphan_observations(
                         conn=conn, schema=target_schema, bank_id=bid, dry_run=dry_run
                     )
+                    # After the sweep, so observations it just removed are not re-tokenized.
+                    schema_rebuilt += await pg_store.admin_rebuild_observation_search_vectors(
+                        conn=conn, schema=target_schema, bank_id=bid, dry_run=dry_run
+                    )
                     schema_banks_done += 1
             except Exception as exc:  # noqa: BLE001 — one bad schema must not abort the sweep
                 results.extend(schema_results)
                 orphan_observations += schema_orphans
+                rebuilt_search_vectors += schema_rebuilt
                 banks_scanned += schema_banks_done
                 done = f", {schema_banks_done} of {len(bank_ids)} bank(s) done" if schema_banks_done else ""
                 typer.echo(f"  schema '{target_schema}': skipped ({exc}){done}", err=True)
@@ -802,6 +813,7 @@ async def _run_repair_bank(
                 continue
             results.extend(schema_results)
             orphan_observations += schema_orphans
+            rebuilt_search_vectors += schema_rebuilt
             banks_scanned += schema_banks_done
             # Only in --all mode: an index whose bank row is gone is unreachable
             # from every bank-scoped path, so this is the one place that can collect
@@ -835,12 +847,14 @@ async def _run_repair_bank(
                 f"{sum(r.skipped for r in schema_results)} to-create (dry-run), "
                 f"{sum(r.would_drop for r in schema_results)} to-drop (dry-run), "
                 f"{sum(r.failed for r in schema_results)} failed, "
-                f"{schema_orphans} orphan observation(s) {'to remove (dry-run)' if dry_run else 'removed'}"
+                f"{schema_orphans} orphan observation(s) {'to remove (dry-run)' if dry_run else 'removed'}, "
+                f"{schema_rebuilt} observation keyword index(es) {'to rebuild (dry-run)' if dry_run else 'rebuilt'}"
             )
         return RepairSweep(
             banks=results,
             skipped_schemas=skipped_schemas,
             orphan_observations=orphan_observations,
+            rebuilt_search_vectors=rebuilt_search_vectors,
             banks_scanned=banks_scanned,
         )
     finally:
@@ -872,13 +886,19 @@ def repair_bank(
         help="Report what would be repaired without creating, dropping or deleting anything.",
     ),
 ):
-    """Repair a bank's derived state: vector index coverage, and orphan observations.
+    """Repair a bank's derived state: vector index coverage, orphan observations, and (under
+    VectorChord) the observations' keyword index.
 
     Orphan observations cite a source memory that no longer exists. Every delete
     path removes them today, but older releases leaked some (#5937); they stay
     recallable and export skips them. Each one is deleted and its surviving
     sources are requeued, the same rule a live delete applies; they are
     re-consolidated on the bank's next consolidation run.
+
+    Under VectorChord, an observation's keyword index is re-tokenized from its
+    current text. Before #5299 a consolidation rewrite or merge changed the text
+    without it, so keyword recall kept matching the old wording. Every
+    observation is rebuilt, since a stale one cannot be told apart from the rest.
 
     With HINDSIGHT_API_VECTOR_INDEX_MIN_ROWS at its default of 0 every bank is
     owed all three indexes from the moment it exists, and this rebuilds whatever
@@ -955,7 +975,9 @@ def repair_bank(
         f"{total_present} already present, {total_created} created, {total_dropped} dropped, "
         f"{total_skipped} to-create (dry-run), {total_would_drop} to-drop (dry-run), "
         f"{total_failed} failed, "
-        f"{sweep.orphan_observations} orphan observation(s) {'to remove (dry-run)' if dry_run else 'removed'}"
+        f"{sweep.orphan_observations} orphan observation(s) {'to remove (dry-run)' if dry_run else 'removed'}, "
+        f"{sweep.rebuilt_search_vectors} observation keyword index(es) "
+        f"{'to rebuild (dry-run)' if dry_run else 'rebuilt'}"
     )
     # Both are reported before either exits. They are independent — a sweep can have
     # failed builds in one schema and be unable to look at another — and raising on
@@ -1077,6 +1099,15 @@ async def _move_bank_rows(
             raise RenameBankError(f"bank '{old_bank_id}' does not exist in schema '{schema}'")
         if await conn.fetchval(f"SELECT 1 FROM {banks} WHERE bank_id = $1", new_bank_id):
             raise RenameBankError(f"bank '{new_bank_id}' already exists in schema '{schema}'")
+        # The API refuses a bank under another bank's alias (it would take the name over,
+        # since a real bank wins resolution). Onto its own alias is the end of the
+        # migration aliases exist for: the alias is the bank's id now, so it goes.
+        aliases = _fq_table("bank_aliases", schema)
+        alias_owner = await conn.fetchval(f"SELECT bank_id FROM {aliases} WHERE alias = $1", new_bank_id)
+        if alias_owner is not None and alias_owner != old_bank_id:
+            raise RenameBankError(f"'{new_bank_id}' is an alias of bank '{alias_owner}' in schema '{schema}'")
+        if alias_owner is not None:  # a dry run rolls this back with the rest
+            await conn.execute(f"DELETE FROM {aliases} WHERE alias = $1", new_bank_id)
         # An operation's task_payload names its bank, so one run after the rename
         # would work on (and could recreate) the old id.
         active = await conn.fetchval(
@@ -1687,6 +1718,105 @@ def worker_status(
         typer.echo("")
 
 
+async def _run_reembed(
+    db_url: str, schemas: list[str], *, finish: bool, batch_size: int, concurrency: int, sleep_s: float
+) -> list[SchemaReembed]:
+    from ..engine.embeddings import create_embeddings_from_env, embedding_model_id
+
+    resolved_url = await resolve_database_url(db_url)
+    embeddings = None
+    if not finish:
+        embeddings = create_embeddings_from_env()
+        await embeddings.initialize()
+        typer.echo(f"New embedding model: {embedding_model_id(embeddings)}")
+    conn = await _admin_connect(db_url)
+    results: list[SchemaReembed] = []
+    try:
+        for target_schema in schemas:
+            if finish:
+                results.append(await finish_schema(conn, target_schema))
+            else:
+                assert embeddings is not None
+                typer.echo(f"Re-embedding schema '{target_schema}'...")
+                results.append(
+                    await reembed_schema(
+                        conn,
+                        resolved_url,
+                        target_schema,
+                        embeddings,
+                        batch_size=batch_size,
+                        concurrency=concurrency,
+                        sleep_s=sleep_s,
+                    )
+                )
+    finally:
+        await conn.close()
+    return results
+
+
+@app.command(name="reembed")
+def reembed(
+    schema: str | None = typer.Option(
+        None, "--schema", "-s", help="Schema to re-embed. Mutually exclusive with --all-schemas."
+    ),
+    all_schemas: bool = typer.Option(
+        False, "--all-schemas", help="Re-embed the base schema and every discovered tenant schema, one at a time."
+    ),
+    finish: bool = typer.Option(
+        False, "--finish", help="Remove the write guard, once every server runs the new embedding model."
+    ),
+    batch_size: int = typer.Option(256, "--batch-size", help="Rows embedded and written per transaction."),
+    concurrency: int = typer.Option(
+        4,
+        "--concurrency",
+        min=1,
+        help="Batches sent to the embedding model at once. Postgres still sees one connection.",
+    ),
+    sleep_s: float = typer.Option(0.0, "--sleep", help="Seconds to pause between batches, to go easy on Postgres."),
+):
+    """Re-embed every stored vector with the embedding model configured in the environment.
+
+    Run it with the NEW model's HINDSIGHT_API_EMBEDDINGS_* settings; servers keep running on the
+    old one. Recall keeps working on the old vectors (without their index) while the new ones are
+    written to a side column in small batches; then a short write lock swaps the columns. From
+    then on Postgres refuses vector writes from servers still on the old model (workers retry
+    them later, HTTP answers 503): restart every server with the new model, then run
+    `reembed --finish`. Until a server restarts its recall embeds queries with the old model.
+
+    PostgreSQL only. Resumable: re-run after an interruption and it continues.
+    """
+    if bool(schema) == all_schemas:
+        typer.echo("Error: pass exactly one of --schema <name> or --all-schemas.", err=True)
+        raise typer.Exit(2)
+    config = HindsightConfig.from_env()
+    if not config.database_url:
+        typer.echo("Error: Database URL not configured.", err=True)
+        raise typer.Exit(1)
+    if is_oracle_url(config.database_url):
+        typer.echo("Error: reembed is PostgreSQL-only.", err=True)
+        raise typer.Exit(1)
+    if get_memories().store_owned:
+        typer.echo("Error: a custom memories store owns the vectors; it must re-embed them itself.", err=True)
+        raise typer.Exit(1)
+
+    schemas = [schema] if schema else asyncio.run(_resolve_schemas(config.database_schema))
+    results = asyncio.run(
+        _run_reembed(
+            config.database_url,
+            schemas,
+            finish=finish,
+            batch_size=batch_size,
+            concurrency=concurrency,
+            sleep_s=sleep_s,
+        )
+    )
+    for r in results:
+        rows = f", {r.rows_embedded} rows embedded" if r.rows_embedded else ""
+        typer.echo(f"  {r.schema}: {r.status}{rows}")
+    if not finish:
+        typer.echo("Next: restart every server with the new model, then run `hindsight-admin reembed --finish`.")
+
+
 @app.command(
     name="chatgpt",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True, "help_option_names": []},
@@ -1696,6 +1826,17 @@ def chatgpt(ctx: typer.Context):
     from ..engine.providers.chatgpt_auth import main as chatgpt_main
 
     raise typer.Exit(chatgpt_main(ctx.args))
+
+
+@app.command(
+    name="cloud",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True, "help_option_names": []},
+)
+def cloud(ctx: typer.Context):
+    """Sign in to Hindsight Cloud for the hindsight decision model (login | status | logout)."""
+    from ..engine.providers.cloud_auth import main as cloud_main
+
+    raise typer.Exit(cloud_main(ctx.args))
 
 
 def main():

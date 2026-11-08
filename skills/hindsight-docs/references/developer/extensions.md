@@ -124,6 +124,67 @@ The [`bank-llm-routing`](https://github.com/vectorize-io/hindsight/tree/main/hin
 
 ---
 
+### ModelCallExtension
+
+Receives every model call the server makes — LLM, embedding, rerank and decision-model calls, successes and failures — once it finishes, as a `ModelCall`: the tenant schema, bank, operation and trace it ran for, scope, provider and model, input / cached / output / thoughts tokens, duration, and the request and response themselves (plus the tool calls, when the model asked for tools). Use it to keep a per-call record of model spend and content outside the `llm_requests` table: object storage, a warehouse, an observability product.
+
+```bash
+HINDSIGHT_API_MODEL_CALL_EXTENSION=mypackage.calls:MyRecorder
+```
+
+Things to know:
+
+- **`record()` runs on the call path, synchronously.** Only buffer there: no I/O, nothing that blocks. Send from a background task. An exception it raises never fails the call; it is swallowed and logged at DEBUG only, so catch and report your own errors.
+- **Lifecycle:** `on_startup()` runs when the memory engine initializes, before any model call; `on_shutdown()` when it closes, after the workers have stopped, so a buffer can be written out completely.
+- **It sees the same calls `llm_requests` tracing sees**, whether or not that table is written, and in the API and the worker alike. Load it in both.
+- **`input` and `output` are the call's content** (prompts and memories included). Treat what you store accordingly.
+- **Operation runs (optional):** override `record_operation(run)` to also receive an `OperationRun` when each retain, recall, reflect, consolidation or mental-model refresh ends, wherever it started (HTTP, MCP or a queued task). It carries the run's wall time, its success or error, the model calls it made (count, summed time and tokens), its calls into the memories store (count and summed time, measured at the store's interface), the engine's timed phases, and for a queued task its id and when it was queued. Every `ModelCall` made inside a run carries the run's id as `operation_id`, so the two join. A run opened inside another (a mental-model refresh's reflect pass) is its own run with `parent_id` set, and keeps only its own figures. Same rule as `record()`: buffer and return.
+- **`current_operation_id()`** (`hindsight_api.operation_runs`) returns the run in progress, for a memories store that wants to tag its own requests with it.
+
+---
+
+### Custom LLM provider
+
+Your own class as the LLM, for a backend no built-in provider speaks (or speaks almost right). Name it by import path wherever a provider goes:
+
+```bash
+HINDSIGHT_API_LLM_PROVIDER=mypackage.llm:MyLLM          # every operation
+HINDSIGHT_API_RETAIN_LLM_PROVIDER=mypackage.llm:MyLLM   # or just one
+```
+
+Any value with a `:` is read as `package.module:ClassName`; it works in the global and per-operation settings, in a failover chain, and as the provider an `LLMRequestExtension` picks (which is how to choose one per bank). The class must subclass `LLMInterface` (`hindsight_api.engine.llm_interface`) and is constructed with keyword arguments: `provider`, `api_key`, `base_url`, `model`, `reasoning_effort` and `timeout` (stored by `LLMInterface.__init__`), plus `extra_body` and `default_headers`. A path that does not import, or a class that is not an `LLMInterface`, stops the server at startup.
+
+Implement:
+
+- **`call(...) -> LLMCallResult`**: one completion. With a `response_format` (a Pydantic model), return the parsed model as `content`, unless `skip_validation` is set. Tool calls also go through `call`, as a response schema, so there is nothing else to implement for reflect.
+- **`verify_connection()`**: the startup check. Raise to refuse to start.
+- **`cleanup()`**: close your clients.
+- **Batch (optional)**: return `True` from `supports_batch_api()` and implement `submit_batch(requests: list[BatchRequest]) -> BatchSubmission`, `get_batch_status(batch_id) -> BatchStatus` and `retrieve_batch_results(batch_id) -> list[BatchResult]` (models in `hindsight_api.engine.response_models`). Each `BatchRequest.body` is an OpenAI chat-completions body. With `HINDSIGHT_API_RETAIN_BATCH_ENABLED=true`, retain then goes through your batch API.
+
+To change one detail of a built-in provider, subclass it instead, and pass the parent the provider name of the wire dialect it speaks (the configured `provider` is your class path, which the built-in classes do not accept):
+
+```python
+from typing import Any
+
+from hindsight_api.engine.providers.openai_compatible_llm import OpenAICompatibleLLM
+
+
+class MyBatchHost(OpenAICompatibleLLM):
+    def __init__(self, **kwargs: Any) -> None:
+        kwargs["provider"] = "openai"
+        super().__init__(**kwargs)
+```
+
+An OpenAI-compatible batch host that needs a `name` on batch creation and rejects `response_format` is such a subclass, overriding `verify_connection` and `submit_batch`.
+
+No API key is required for a custom provider; check for one in `verify_connection` if yours needs it. `tests/test_custom_llm_provider.py` in the repository holds a complete, tested example (`EchoProvider`). Install the package the same way as any extension (see [Deploying Custom Extensions](#deploying-custom-extensions)).
+
+:::caution
+`LLMInterface` is an internal interface made public. It may change between minor versions; pin your Hindsight version and check the changelog when upgrading.
+:::
+
+---
+
 ## Writing Custom Extensions
 
 ### Extension Basics
@@ -327,6 +388,20 @@ chunked transfer encoding). Use it for cheap size-aware quota or cost guards;
 the full `validate_*` hooks still run after parsing and should enforce precise
 per-operation limits.
 
+#### Rejecting an operation
+
+`ValidationResult.reject(reason, status_code=403)` refuses the operation before
+it does any work. The caller gets `status_code` with `reason` as the error
+detail, so pick the code that tells the client what to do: `403` for a policy
+refusal, `402` or `429` for a quota. The refusal is counted on
+`hindsight.operation.total` with `success="rejected"`, not `"false"`, so a
+client that keeps calling after it has been refused does not show up as a rise
+in the operation's failure rate (see [Monitoring](./monitoring.md)).
+
+Only a rejection counts that way. If the validator itself raises (for example,
+its quota service is down), the operation fails with a `500` and is counted as
+`success="false"`.
+
 #### Memory curation hooks
 
 Curating a memory (`PATCH /v1/default/banks/{bank_id}/memories/{memory_id}`:
@@ -343,6 +418,65 @@ edit, invalidate, or revert) has its own pair of hooks, in addition to the
   again (0 for a plain invalidation or a reason-only update). An edit or revert
   re-embeds the memory and re-consolidates the bank, so this is the figure to
   meter if curation should cost the same as ingesting that text.
+
+#### Checking a mental model's new document
+
+`validate_mental_model_candidate(ctx: MentalModelCandidateContext)` runs when a
+refresh (full or delta) has produced its new document, just before it replaces
+the stored one. `ctx.candidate_content` is the exact markdown that would be
+stored; `ctx.current_content`, `ctx.max_tokens`, `ctx.refresh_mode` and
+`ctx.candidate_structured` let you compare it with the page readers have now.
+Use it to hold a page to rules the model can't be trusted to follow, such as a
+hard length limit or "no repeated sections".
+
+- **Accept** and the document is stored as is.
+- **Reject** and the stored document, its structured view and its watermark all
+  stay as they were. The operation fails with outcome
+  `refresh_failed_candidate_rejected` and failure reason `candidate_rejected`,
+  the rejection reason is in the model's history, and automatic refreshes pause
+  until an explicit refresh succeeds.
+- By default a rejection is final: the worker does not run the refresh again,
+  because the same input tends to make the same kind of document.
+- To get another draft instead, return
+  `ValidationResult.reject(reason, retry=True)`. The refresh writes a new, full
+  document straight away, with `reason` added to the prompt so the model knows
+  what to fix, then calls the hook again. `ctx.attempt` says which draft this is
+  (0 for the first) and `ctx.previous_rejections` lists the reasons given so
+  far. After 3 redrafts a rejection is final, whatever `retry` says.
+
+If the hook raises, the document is not stored either. The dry run does not
+call this hook.
+
+#### Memory review hooks
+
+Two optional hooks let a validator see what is about to be written and drop it
+or change its tags. Each returns one `MemoryReview(keep=True, tags=None)` per
+item, in order, or `None` to keep everything as is. `tags`, when set, replaces
+the item's tags. Text can't be changed.
+
+- `filter_retain_facts(ctx: RetainFactsContext)` runs after a retain extracts
+  its memories and before they are embedded and stored. `ctx.facts` holds each
+  memory's `text`, `fact_type`, `tags` and `entities`, and `ctx.document_id`
+  names the document. A large document is extracted in batches, so one retain
+  can call the hook several times. When a document is retained again, the
+  memories of its unchanged chunks are kept without passing through the hook.
+  The extraction dry run calls no validator hook, so its preview still lists
+  the memories this hook would drop.
+- `filter_consolidation_actions(ctx: ConsolidationActionsContext)` runs after a
+  consolidation batch decides its observation writes and before they are
+  applied. Each `ReviewedConsolidationAction` is a `create` or an `update` (of
+  `observation_id`), with its `text`, `tags` and `source_memory_ids`. An update
+  adds its tags to the observation's current ones. `merge_into` is set when
+  the write will be folded into an existing near-duplicate. A fold keeps that
+  observation's tags, so new tags have no effect there, but dropping the action
+  still stops the fold. The source memories of a dropped action are still
+  marked consolidated.
+
+```python
+class DropPasswords(OperationValidatorExtension):
+    async def filter_retain_facts(self, ctx: RetainFactsContext):
+        return [MemoryReview(keep="password" not in f.text.lower()) for f in ctx.facts]
+```
 
 #### Transfer-archive import hooks
 
@@ -545,6 +679,50 @@ class PerCustomerLLMs(LLMRequestExtension):
 ```
 
 `resolve` runs on every LLM call, so cache anything slow. Bank ids are unique per tenant schema only — a multi-tenant deployment must key on `target.schema` too, or one tenant can name a bank after another tenant's and be billed to its key. `LLMRequestOverrides` keeps the LLM and key out of its `repr`; keep them out of your own logs as well.
+
+---
+
+### Example: Custom ModelCallExtension
+
+```python
+import asyncio
+
+from hindsight_api.extensions import ModelCall, ModelCallExtension
+
+
+class JsonlFileRecorder(ModelCallExtension):
+    """Appends every model call to a JSONL file, written once a second off the call path."""
+
+    def __init__(self, config: dict[str, str]) -> None:
+        super().__init__(config)
+        self.path = config.get("path", "model_calls.jsonl")
+        self.buffer: list[str] = []
+        self.task: asyncio.Task | None = None
+
+    def record(self, call: ModelCall) -> None:
+        self.buffer.append(call.model_dump_json())  # buffer only
+
+    async def on_startup(self) -> None:
+        self.task = asyncio.create_task(self._flush_forever())
+
+    async def on_shutdown(self) -> None:
+        if self.task:
+            self.task.cancel()
+        self._flush()
+
+    async def _flush_forever(self) -> None:
+        while True:
+            await asyncio.sleep(1)
+            self._flush()
+
+    def _flush(self) -> None:
+        lines, self.buffer = self.buffer, []
+        if lines:
+            with open(self.path, "a") as f:
+                f.write("\n".join(lines) + "\n")
+```
+
+Calls are recorded in the API and in every worker, from whichever event loop made them, so a production recorder should guard its buffer with a `threading.Lock` and write from a task of its own.
 
 ---
 

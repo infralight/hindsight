@@ -134,9 +134,9 @@ Dcode namespaces a plugin's MCP tools, so they appear as
 them from the tool guide either way. In headless runs (`dcode -n`) Dcode allows the read-only
 Hindsight tools and gates the two that write (`hindsight_ingest_document`,
 `hindsight_capture_initiative`) behind an approval it has no UI for; use the interactive TUI to
-capture an initiative or ingest a document. For the same reason the one-time codebase survey runs
-under another installed agent's CLI when there is one, exactly as it does for Cursor, Copilot,
-Devin, Grok Build, Cline, Kilo and Prime Agent.
+capture an initiative or ingest a document. For the same reason Dcode gets no one-time codebase
+survey: the survey runs only under the current agent's own CLI, and only Claude Code, Codex,
+Antigravity and opencode v1 have a headless, read-only recipe for it.
 
 ####  opencode
 
@@ -158,12 +158,13 @@ rewrote the plugin API, so it is a harness of its own. It writes the same plugin
 if it sees v2's `plugins` key — and each CLI then loads its own entry point from the one registered
 path. So installing either harness wires both, and uninstalling either removes the shared entry.
 
-Two differences from v1, both because of the host: the one-time codebase survey runs under another
-installed agent's CLI (v2 plugins cannot define the read-only agent the survey needs), and the seed
-banner is written to the plugin log instead of a TUI toast (v2 plugins cannot raise one). Recall,
-injection, the native `hindsight_*` tools and session write-back are identical. The companion skill
-is identical too, but it is registered in memory through v2's skill API rather than copied into a
-skills directory — opencode2 has none of its own, and the two it reads belong to other agents.
+Two differences from v1, both because of the host: there is no one-time codebase survey (v2 plugins
+cannot define the read-only agent the survey needs, and the survey never borrows another agent's
+CLI), and the seed banner is written to the plugin log instead of a TUI toast (v2 plugins cannot
+raise one). Recall, injection, the native `hindsight_*` tools and session write-back are identical.
+The companion skill is identical too, but it is registered in memory through v2's skill API rather
+than copied into a skills directory — opencode2 has none of its own, and the two it reads belong to
+other agents.
 
 ####  Kilo CLI
 
@@ -381,7 +382,9 @@ A Cordis plugin row in `$DSH_HOME/cordis.patch.yml` (`~/.dsh` by default), which
 composes — native tools, no MCP needed. Two dsh-specific notes: one dsh process serves **several
 repositories** (its Web UI opens each session in whatever directory you pick), so the bank is
 resolved per session workspace rather than once per process; and dsh has no plugin-facing notice
-channel, so the seed line goes to the plugin log rather than the UI. Everything model-facing —
+channel, so the seed line goes to the plugin log rather than the UI. A **forked** session saves only
+the turns it adds after the fork — the part it inherited is already in the parent's conversation.
+Everything model-facing —
 recalled memory, the knowledge preamble, the `hindsight_*` tools — is unaffected. If you prefer the
 published-package route, `dsh plugin --profile web add @vectorize-io/hindsight-coding-agents` works
 too: the package ships the profile patch layer, so nothing else needs editing. Either route gets the
@@ -694,8 +697,8 @@ hook by Codex...), so one shared config serves several agents side by side:
 | `pages`                 | every page                           | per-page configuration for the seeded knowledge pages, keyed by page name (case-insensitive): `false` skips a page entirely, `{"source_query": "..."}` seeds it with your question instead of the built-in one. Omitted, all five pages are seeded with their built-in queries. This is the supported way to own a page's wording — the plugin re-syncs a page whose live query differs from the one it is configured to have, so a query edited through the API or the control plane is replaced on the next session. A skipped page is **not deleted**: one already seeded keeps its content and stops being re-synced. The scoping clause is appended to your query too, so a reworded page cannot start reporting a dependency's decisions as this project's. File-only, like `recallOptions`; in a `banks.<id>` section it replaces the global map rather than merging into it                             |
 | `customPages`           | —                                    | knowledge pages of your own, seeded alongside the five above and keyed by the name they get: `{"Security posture": {"source_query": "...", "tags": ["knowledge:decision"]}}`. `source_query` is required; `tags` picks which facts feed the page and is optional — omitted, the page draws on everything the bank holds. A separate setting from `pages` on purpose, so that an unknown name there stays a typo warning rather than quietly creating a page. File-only, and replaced (not merged) by a `banks.<id>` section                                                                                                                                                                                                                                                                                                                                                                                     |
 | `autoSeed`              | `true`                               | SessionStart: auto-seed a cold repo's bank from git history                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `seedLimit`             | `300`                                | auto-seed: most-recent-N-commits cap                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `codebaseSurvey`        | `true`                               | SessionStart: headless survey of a cold repo's structure, run under the current harness's own CLI (claude/codex/antigravity/opencode), falling back to any available agent                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `seedLimit`             | `300`                                | git-log document size: a full write keeps the newest commits, between half of this and this many (the window moves in steps of half), and logs how many older ones it drops                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `codebaseSurvey`        | `true`                               | SessionStart: headless survey of a cold repo's structure, run only under the current harness's own CLI (Claude Code, Codex, Antigravity, opencode v1); other agents get no survey                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `surveyModel`           | `haiku`                              | model for the survey — Claude recipe only (`claude -p --model`); other agents use their configured default                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `surveyBudgetUsd`       | `2`                                  | survey spend cap — Claude recipe only (`claude -p --max-budget-usd`); other agents rely on their read-only sandbox                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `surveyRefreshCommits`  | `20`                                 | re-run the survey at SessionStart once this many commits have accrued since the last one, so the structural pages track an architecture that keeps moving (`0` = survey a cold repo only, never again)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -1029,6 +1032,12 @@ Coding memory is **per repository**. Resolution order for the working directory:
 The default `"coding-agent::{gitProject}"` is **harness-neutral**, so opencode, Claude Code, and Codex
 all share one memory per repo — use `"{harness}-{gitProject}"` to split per agent instead.
 
+The bank is resolved on every turn from where the agent is working. A session that moves into a
+directory with a different bank (say, `cd` across a `mapPathToBank` prefix) **follows the folder from
+that turn on**: the new bank gets the turns from the move onward, never the ones already saved
+elsewhere, and going back appends to the conversation the first bank already holds. Each move is
+logged as a warning in `plugin.log`.
+
 ### Recording where a memory came from
 
 With a bank per repo, the bank _is_ the answer to "where did this come from". On a deliberately
@@ -1169,7 +1178,9 @@ npx @vectorize-io/hindsight-coding-agents stats
 that: `"synced": true` means the seeded memory is queryable. It also reports gitlog freshness, how
 far per-commit deepening has got, the codebase survey's state (`surveyBaseline` is the HEAD the last
 survey started from, `surveyDocs` counts the findings documents that have landed, 0–4 — a baseline
-with no findings retries automatically), and the extraction operations still in flight.
+with no findings retries automatically, at most three times per commit), and the extraction
+operations still in flight. A survey that was skipped (no survey for this agent, or its CLI not
+found), failed to launch or exited with an error leaves one `[survey]` line in the plugin log.
 
 ### Resetting a repo's memory
 
