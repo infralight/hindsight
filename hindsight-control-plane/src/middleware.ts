@@ -3,7 +3,22 @@ import type { NextRequest } from "next/server";
 import { localizeApiErrorPayload } from "@/lib/i18n/api-errors";
 import createIntlMiddleware from "next-intl/middleware";
 
-import { ACCESS_KEY_COOKIE, SESSION_REQUIRED_HEADER, verifySessionToken } from "@/lib/auth/session";
+import {
+  ACCESS_KEY_COOKIE,
+  SESSION_REQUIRED_HEADER,
+  sessionCookieOptions,
+  verifySessionToken,
+} from "@/lib/auth/session";
+import { oidcConfig, refreshIdToken } from "@/lib/auth/oidc";
+import {
+  USER_SESSION_COOKIE,
+  USER_SESSION_MAX_AGE_SECONDS,
+  isRbacAuthMode,
+  openSession,
+  sealSession,
+  sessionSecret,
+  type UserSession,
+} from "@/lib/auth/user-session";
 import { sanitizeReturnTo, stripBasePath, withBasePath } from "@/lib/base-path";
 import { routing } from "@/i18n/routing";
 
@@ -22,7 +37,93 @@ const PUBLIC_PATTERNS = [
 
 const intlMiddleware = createIntlMiddleware(routing);
 
+// fork(rbac): seconds before an ID token's expiry at which it is refreshed.
+const REFRESH_LEEWAY_SECONDS = 60;
+
+/** fork(rbac): the signed-in user's session, refreshing an expiring ID token; null = signed out. */
+async function currentSession(
+  request: NextRequest,
+  secret: string
+): Promise<{ session: UserSession | null; resealed?: string }> {
+  const session = await openSession(request.cookies.get(USER_SESSION_COOKIE)?.value, secret);
+  if (!session || session.kind !== "oidc") return { session };
+  if (session.credExp - REFRESH_LEEWAY_SECONDS > Math.floor(Date.now() / 1000)) return { session };
+  const cfg = oidcConfig();
+  if (!cfg || !session.refresh) return { session: null };
+  try {
+    const tokens = await refreshIdToken(cfg, session.refresh);
+    const refreshed: UserSession = {
+      ...session,
+      cred: tokens.idToken,
+      refresh: tokens.refresh ?? session.refresh,
+      credExp: tokens.exp,
+    };
+    return { session: refreshed, resealed: await sealSession(refreshed, secret) };
+  } catch {
+    return { session: null };
+  }
+}
+
+/** fork(rbac): per-user sessions instead of the shared access key. */
+async function rbacMiddleware(request: NextRequest, appPathname: string) {
+  const isApi = appPathname.startsWith("/api/");
+  const isPublic = PUBLIC_PATTERNS.some((pattern) => appPathname.startsWith(pattern));
+  const isLogin = appPathname === "/login";
+  const secret = sessionSecret();
+  if (!secret) {
+    if (isPublic) return isApi ? NextResponse.next() : intlMiddleware(request);
+    return isApi
+      ? NextResponse.json(
+          { error: "HINDSIGHT_CP_SESSION_SECRET is not configured" },
+          { status: 500 }
+        )
+      : NextResponse.redirect(new URL(withBasePath("/login?error=config"), request.url));
+  }
+  if (isPublic && !isLogin) return isApi ? NextResponse.next() : intlMiddleware(request);
+
+  const { session, resealed } = await currentSession(request, secret);
+  if (resealed) {
+    // The route handler reads the session from this request: hand it the refreshed one too.
+    request.cookies.set(USER_SESSION_COOKIE, resealed);
+  }
+
+  let response: NextResponse;
+  if (isLogin && session) {
+    const target = sanitizeReturnTo(request.nextUrl.searchParams.get("returnTo"));
+    response = NextResponse.redirect(new URL(withBasePath(target), request.url));
+  } else if (isLogin) {
+    return intlMiddleware(request);
+  } else if (!session && isApi) {
+    return NextResponse.json(
+      localizeApiErrorPayload(request, {
+        error: "Unauthorized",
+        errorKey: "api.errors.auth.unauthorized",
+      }),
+      { status: 401, headers: { [SESSION_REQUIRED_HEADER]: "1" } }
+    );
+  } else if (!session) {
+    const loginUrl = new URL(withBasePath("/login"), request.url);
+    loginUrl.searchParams.set("returnTo", appPathname);
+    return NextResponse.redirect(loginUrl);
+  } else {
+    response = isApi
+      ? NextResponse.next({ request: { headers: request.headers } })
+      : intlMiddleware(request);
+  }
+  if (resealed) {
+    response.cookies.set({
+      name: USER_SESSION_COOKIE,
+      value: resealed,
+      ...sessionCookieOptions(request),
+      maxAge: USER_SESSION_MAX_AGE_SECONDS,
+    });
+  }
+  return response;
+}
+
 export async function middleware(request: NextRequest) {
+  if (isRbacAuthMode()) return rbacMiddleware(request, stripBasePath(request.nextUrl.pathname));
+
   const accessKey = process.env.HINDSIGHT_CP_ACCESS_KEY;
   const { pathname } = request.nextUrl;
   const appPathname = stripBasePath(pathname);

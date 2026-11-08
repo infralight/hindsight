@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { SignedInUser } from "@/components/signed-in-user";
 import { useTranslations } from "next-intl";
 import { useBank } from "@/lib/bank-context";
 import { bankRoute } from "@/lib/bank-url";
@@ -939,11 +940,13 @@ function BankSelectorInner() {
           {features?.access_key_auth && (
             <>
               <div className="h-8 w-px bg-border" />
+              {/* fork(rbac): show who is signed in next to the logout button */}
+              <SignedInUser />
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-9 w-9"
-                title="Logout"
+                title={tNav("logout")}
                 onClick={logout}
               >
                 <LogOut className="h-5 w-5" />

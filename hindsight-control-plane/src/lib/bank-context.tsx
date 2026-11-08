@@ -103,7 +103,9 @@ export function BankProvider({ children }: { children: React.ReactNode }) {
       setTotalBanks(response.total ?? 0);
     } catch (error) {
       if (seq !== requestSeq.current) return;
-      console.error("Error loading banks:", error);
+      // fork(rbac): signed out (e.g. on the login page) is not an error worth logging.
+      if ((error as { status?: number })?.status !== 401)
+        console.error("Error loading banks:", error);
     } finally {
       if (seq === requestSeq.current) setBanksLoading(false);
     }

@@ -21,6 +21,8 @@ import { BankOperationsView } from "@/components/bank-operations-view";
 import { MentalModelsView } from "@/components/mental-models-view";
 import { WebhooksView } from "@/components/webhooks-view";
 import { AuditLogsView } from "@/components/audit-logs-view";
+import { BankAccessView } from "@/components/rbac/bank-access-view"; // fork(rbac)
+import { useBankAccess } from "@/lib/use-bank-access"; // fork(rbac)
 import { LLMRequestsView } from "@/components/llm-requests-view";
 import { FeatureNotEnabled } from "@/components/feature-not-enabled";
 import { useFeatures } from "@/lib/features-context";
@@ -66,6 +68,7 @@ import {
   Pencil,
   RotateCcw,
   Activity,
+  Lock, // fork(rbac)
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { LlmHealthDialog } from "@/components/llm-health-dialog";
@@ -87,7 +90,8 @@ type BankConfigTab =
   | "configuration"
   | "webhooks"
   | "audit-logs"
-  | "llm-requests";
+  | "llm-requests"
+  | "access"; // fork(rbac)
 
 const LAST_DATA_SUB_TAB_KEY = "hindsight.memories.subTab";
 
@@ -108,6 +112,8 @@ export default function BankPage() {
   const tCommon = useTranslations("common");
   const { features } = useFeatures();
   const { currentBank: bankId, setCurrentBank, loadBanks } = useBank();
+  // fork(rbac): hide what this caller may not do; outside rbac mode can() is always true.
+  const { access: bankAccess, can, setAccess: setBankAccess } = useBankAccess(bankId);
 
   const view = (searchParams.get("view") || "home") as NavItem;
   // Memories reopens on the sub-tab the user last picked, not always World —
@@ -352,6 +358,13 @@ export default function BankPage() {
                 don't pay ~350px gutters for that cap. One wrapper covers
                 every view because they all sit under this container. */}
             <div className="max-w-[1024px] xl:max-w-[1280px] 2xl:max-w-[1440px] mx-auto w-full">
+              {/* fork(rbac): say so up front instead of letting every write fail. */}
+              {bankAccess && !can("write") && (
+                <p className="mb-4 flex items-center gap-2 rounded-md border border-border/40 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+                  <Lock className="h-4 w-4 shrink-0" />
+                  {t("readOnlyBank")}
+                </p>
+              )}
               {/* Bank Configuration Tab */}
               {view === "profile" && (
                 <div>
@@ -416,7 +429,8 @@ export default function BankPage() {
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           onClick={handleTriggerConsolidation}
-                          disabled={isConsolidating || !observationsEnabled}
+                          // fork(rbac): write actions need write access.
+                          disabled={isConsolidating || !observationsEnabled || !can("write")}
                           title={
                             !observationsEnabled ? "Observations feature is not enabled" : undefined
                           }
@@ -433,7 +447,9 @@ export default function BankPage() {
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={handleRecoverConsolidation}
-                          disabled={isRecoveringConsolidation || !observationsEnabled}
+                          disabled={
+                            isRecoveringConsolidation || !observationsEnabled || !can("write")
+                          }
                           title={
                             !observationsEnabled ? "Observations feature is not enabled" : undefined
                           }
@@ -450,7 +466,7 @@ export default function BankPage() {
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => setShowClearObservationsDialog(true)}
-                          disabled={!observationsEnabled}
+                          disabled={!observationsEnabled || !can("write")}
                           className="text-amber-600 dark:text-amber-400 focus:text-amber-700 dark:focus:text-amber-300"
                           title={
                             !observationsEnabled ? "Observations feature is not enabled" : undefined
@@ -465,7 +481,7 @@ export default function BankPage() {
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           onClick={() => setShowResetConfigDialog(true)}
-                          disabled={!bankConfigEnabled}
+                          disabled={!bankConfigEnabled || !can("write")}
                           className="text-amber-600 dark:text-amber-400 focus:text-amber-700 dark:focus:text-amber-300"
                           title={!bankConfigEnabled ? "Bank Config API is disabled" : undefined}
                         >
@@ -475,14 +491,17 @@ export default function BankPage() {
                             <span className="ml-auto text-xs text-muted-foreground">Off</span>
                           )}
                         </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() => setShowDeleteDialog(true)}
-                          className="text-red-600 dark:text-red-400 focus:text-red-700 dark:focus:text-red-300"
-                        >
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          {t("deleteBank")}
-                        </DropdownMenuItem>
+                        {/* fork(rbac): only the owner of a private bank, or an admin, deletes it. */}
+                        {can("delete_bank") && <DropdownMenuSeparator />}
+                        {can("delete_bank") && (
+                          <DropdownMenuItem
+                            onClick={() => setShowDeleteDialog(true)}
+                            className="text-red-600 dark:text-red-400 focus:text-red-700 dark:focus:text-red-300"
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            {t("deleteBank")}
+                          </DropdownMenuItem>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
@@ -498,9 +517,20 @@ export default function BankPage() {
                             { id: "configuration" as const, label: t("configuration") },
                           ]
                         : []),
-                      { id: "webhooks", label: t("webhooks") },
-                      { id: "audit-logs", label: t("auditLogs"), off: !auditLogEnabled },
+                      // fork(rbac): webhooks and the audit log are for the owner or an admin.
+                      ...(can("manage")
+                        ? [
+                            { id: "webhooks" as const, label: t("webhooks") },
+                            {
+                              id: "audit-logs" as const,
+                              label: t("auditLogs"),
+                              off: !auditLogEnabled,
+                            },
+                          ]
+                        : []),
                       { id: "llm-requests", label: t("llmRequests"), off: !llmTraceEnabled },
+                      // fork(rbac): who can use the bank.
+                      ...(features?.rbac ? [{ id: "access" as const, label: t("access") }] : []),
                     ]}
                   />
 
@@ -528,7 +558,16 @@ export default function BankPage() {
                         <BankConfigView />
                       </div>
                     )}
-                    {bankConfigTab === "webhooks" && (
+                    {bankConfigTab === "access" && features?.rbac && bankId && (
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-4">
+                          {t("accessDescription")}
+                        </p>
+                        <BankAccessView bankId={bankId} onChange={setBankAccess} />
+                      </div>
+                    )}
+                    {/* fork(rbac): can("manage") here and on audit logs below. */}
+                    {bankConfigTab === "webhooks" && can("manage") && (
                       <div>
                         <p className="text-sm text-muted-foreground mb-4">
                           {t("webhooksDescription")}
@@ -537,6 +576,7 @@ export default function BankPage() {
                       </div>
                     )}
                     {bankConfigTab === "audit-logs" &&
+                      can("manage") &&
                       (auditLogEnabled ? (
                         <div>
                           <p className="text-sm text-muted-foreground mb-4">

@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from hindsight_api.api.mcp import (
     _current_api_key,
     _current_api_key_id,
@@ -257,8 +256,11 @@ async def test_validator_cannot_add_tools_beyond_bank_config():
 
 
 @pytest.mark.asyncio
-async def test_validator_exception_fails_open(caplog):
-    """If filter_mcp_tools raises, all tools remain visible and warning is logged."""
+async def test_validator_exception_fails_closed(caplog):
+    """If filter_mcp_tools raises, no tool is visible and an error is logged.
+
+    fork(rbac): upstream fails open here; with RBAC the filter is an access decision.
+    """
     import logging
 
     caplog.set_level(logging.WARNING)
@@ -306,9 +308,7 @@ async def test_validator_exception_fails_open(caplog):
             tools = await mcp_server._tool_manager.get_tools()
             tool_names = set(tools.keys())
 
-        assert "retain" in tool_names
-        assert "recall" in tool_names
-        assert "reflect" in tool_names
+        assert tool_names == set()
 
         assert any("filter_mcp_tools raised" in r.message for r in caplog.records)
     finally:

@@ -23,7 +23,7 @@ from hindsight_api.config import (
     DEFAULT_MCP_RETAIN_DESCRIPTION,
 )
 from hindsight_api.engine import page_markdown
-from hindsight_api.engine.audit import AuditEntry, AuditLogger
+from hindsight_api.engine.audit import AuditEntry, AuditLogger, audit_actor
 from hindsight_api.engine.memory_engine import KEEP_PARENT
 from hindsight_api.engine.response_models import (
     VALID_RECALL_FACT_TYPES,
@@ -839,8 +839,9 @@ def _apply_bank_tool_filtering(mcp: FastMCP, memory: MemoryEngine, config: MCPTo
             try:
                 filtered = await validator.filter_mcp_tools(bank_id, request_context, candidate)
             except Exception:
-                logger.warning("filter_mcp_tools raised, returning unfiltered tools", exc_info=True)
-                return enabled
+                # fork(rbac): the filter is an access decision; a failure hides every tool.
+                logger.error("filter_mcp_tools raised, hiding all tools", exc_info=True)
+                return set()
             if filtered != candidate:
                 # Validator can only narrow, never expand beyond the bank config ceiling.
                 if bank_tools is not None:
@@ -980,6 +981,7 @@ def _apply_audit_logging(mcp: FastMCP, memory: MemoryEngine, config: MCPToolsCon
             return result
         finally:
             entry.ended_at = datetime.now(timezone.utc)
+            entry.metadata["actor"] = audit_actor(_get_request_context(config))  # fork(rbac)
             audit_logger.log_fire_and_forget(entry)
 
     object.__setattr__(mcp, "call_tool", _call_tool)

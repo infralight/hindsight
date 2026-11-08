@@ -2522,6 +2522,8 @@ def mock_memory_with_resolver():
     )
     memory._config_resolver = MagicMock()
     memory._config_resolver.get_bank_config = AsyncMock(return_value={})
+    # fork(rbac): a validator failure hides every tool, so don't let MagicMock invent one.
+    memory._operation_validator = None
     return memory
 
 

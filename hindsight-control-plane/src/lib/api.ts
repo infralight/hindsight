@@ -470,7 +470,8 @@ interface DocumentHistoryResponse {
 }
 
 export class ControlPlaneClient {
-  private async fetchApi<T>(
+  // fork(rbac): public so lib/rbac-api.ts shares the toasts and the sign-in redirect.
+  async fetchApi<T>(
     path: string,
     options?: RequestInit,
     // Bulk callers loop over many requests and report the failures themselves; one
@@ -491,13 +492,16 @@ export class ControlPlaneClient {
         // Redirect to login only when the UI session itself was refused. A 401 the
         // dataplane returned is shown as an error: a new UI key can't fix it.
         const currentPath = stripBasePath(`${window.location.pathname}${window.location.search}`);
-        if (
-          response.status === 401 &&
-          response.headers.get(SESSION_REQUIRED_HEADER) &&
-          !currentPath.startsWith("/login")
-        ) {
-          window.location.href = withBasePath(`/login?returnTo=${encodeURIComponent(currentPath)}`);
-          throw new Error("Unauthorized");
+        if (response.status === 401 && response.headers.get(SESSION_REQUIRED_HEADER)) {
+          // fork(rbac): on the login page itself the refusal is expected (shared providers
+          // load data on every page) — no redirect and no error toast.
+          if (!currentPath.startsWith("/login")) {
+            window.location.href = withBasePath(
+              `/login?returnTo=${encodeURIComponent(currentPath)}`
+            );
+          }
+          // A status keeps the catch below from reporting it as a network failure.
+          throw Object.assign(new Error("Unauthorized"), { status: 401 });
         }
 
         // Try to parse error response
@@ -560,6 +564,8 @@ export class ControlPlaneClient {
         throw error;
       }
 
+      // fork(rbac): the RBAC API answers deletes and membership changes with 204.
+      if (response.status === 204) return undefined as T;
       return response.json();
     } catch (error) {
       // If it's not a response error (network error, etc.), show toast. A request
@@ -2139,6 +2145,7 @@ export class ControlPlaneClient {
         audit_log: boolean;
         llm_trace: boolean;
         store_document_text: boolean;
+        rbac?: boolean; // fork(rbac)
       };
     }>("/api/version");
   }
